@@ -36,7 +36,7 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_sce
 - [ ] On real hardware: store and recall a scene on a group of Hue bulbs, then press the bound Tap Dial.
 - [ ] Bind a Tap Dial to a group from the Remotes tab; check the binding table read. Check what the dial's buttons and rotation do once bound.
 - [ ] After migrating from Z2M: **Import from lights** on groups recreated with the same ids.
-- [ ] Brand icons for the Marketplace brands check (`custom_components/zha_scenes/brand/`, as in hive-local).
+- [x] Brand icons (`brand/icon.png`, `icon@2x.png`: three overlapping light circles, drawn with Pillow) and repo topics, for the Marketplace checks.
 - [ ] If ZHA reloads, the gateway object changes. We look it up on every call, so this should be fine, but it's untested.
 
 ## Conventions
