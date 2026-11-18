@@ -247,6 +247,7 @@ def zigbee():
         return group
     gateway.async_create_zigpy_group = create_group
     app.bulb1, app.bulb2, app.dial = bulb1, bulb2, dial
+    app.gateway = gateway
     with patch("custom_components.hue_remote_scenes.zigbee.get_zha_gateway", return_value=gateway), \
          patch("homeassistant.components.panel_custom.async_register_panel"), \
          patch("homeassistant.components.frontend.async_remove_panel"):
@@ -413,7 +414,8 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
     assert r["result"]["remotes"] == [{
         "ieee": str(app.dial.ieee), "name": "Tap dial", "model": "RDM002", "manufacturer": "Signify",
         "battery": True, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}],
-        "area": None, "bound": [], "checked": None, "dial_supported": True, "dial": None}]
+        "area": None, "bound": [], "checked": None, "dial_supported": True, "dial": None,
+        "cycle_trigger": None, "cycle": None}]
 
     r = await ws(2, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP)
     assert r["success"], r
@@ -581,3 +583,142 @@ async def test_imports_data_saved_before_the_rename(hass: HomeAssistant, zigbee,
     assert hass.states.get("scene.living_room_movie") is not None
     await hass.async_block_till_done()
     assert hass_storage[DOMAIN]["data"]["remotes"][str(zigbee.dial.ieee)]["dial"]["group_id"] == GROUP
+
+
+def _add_remote(app, ieee, nwk, endpoints, model, name):
+    """Pair another remote: a zigpy device plus ZHA's view of it."""
+    dev = _device(app, ieee, nwk, endpoints)
+    app.gateway.devices[dev.ieee] = SimpleNamespace(
+        ieee=dev.ieee, name=name, model=model, manufacturer="Signify Netherlands B.V.",
+        is_coordinator=False, is_mains_powered=False, device=dev)
+    return dev
+
+
+# Endpoint layouts from zha-device-handlers' quirk signatures.
+RWL022_EPS = {1: ([0x0000, 0x0001, 0x0003, 0xFC00, 0x1000],
+                  [0x0019, 0x0000, 0x0003, 0x0004, 0x0006, 0x0008, 0x0005, 0x1000])}
+RWL021_EPS = {  # gen 1, newer firmware: endpoint 1 (ZLL) sends, endpoint 2 has Hue's 0xFC00
+    1: ([0x0000], [0x0000, 0x0003, 0x0004, 0x0006, 0x0008, 0x0005]),
+    2: ([0x0000, 0x0001, 0x0003, 0x000F, 0xFC00], [0x0019]),
+}
+DIMMER_GROUP = 0x2A2A  # a gen 2 dimmer's built-in group (as seen in zha-device-handlers#4747)
+
+
+async def test_dimmer_gen2_hue_button(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    """RWL022: the Hue button recalls scenes 0 and 1 on its own group, like the Tap Dial."""
+    app = zigbee
+    dimmer = _add_remote(app, "00:17:88:01:00:00:00:05", 0x1005, RWL022_EPS, "RWL022", "Dimmer")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    remotes = {r["ieee"]: r for r in (await ws(1, type="hue_remote_scenes/remotes"))["result"]["remotes"]}
+    r = remotes[str(dimmer.ieee)]
+    assert r["endpoints"] == [{"id": 1, "clusters": [6, 8, 5]}]
+    assert r["dial_supported"] and r["cycle_trigger"] is None
+
+    with patch("custom_components.hue_remote_scenes.zigbee.BIND_RETRY", 0):
+        await client.send_json({"id": 2, "type": "hue_remote_scenes/find_dial_group", "ieee": str(dimmer.ieee)})
+        scenes_out = dimmer.endpoints[1].out_clusters[Scenes.cluster_id]
+        for _ in range(200):
+            if scenes_out._listeners and any(b.DstAddress.addrmode == 3 for b in app.bindings[dimmer.ieee]):
+                break
+            await asyncio.sleep(0.01)
+        app.press(dimmer, 0, DIMMER_GROUP)  # Hue button
+        r = await client.receive_json()
+    assert r["result"] == {"group_id": DIMMER_GROUP, "scene_id": 0, "exists": False}
+    remotes = {r["ieee"]: r for r in (await ws(3, type="hue_remote_scenes/remotes"))["result"]["remotes"]}
+    assert remotes[str(dimmer.ieee)]["dial"] == {
+        "group_id": DIMMER_GROUP, "buttons": [["Hue button A", 0], ["Hue button B", 1]]}
+
+    assert (await ws(4, type="hue_remote_scenes/create_group", group_id=DIMMER_GROUP, name="Hall dimmer",
+                     members=[_m(app.bulb1), _m(app.bulb2)]))["success"]
+    app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 254}
+    assert (await ws(5, type="hue_remote_scenes/store", group_id=DIMMER_GROUP, scene_id=0, name="Bright"))["success"]
+    app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 40}
+    assert (await ws(6, type="hue_remote_scenes/store", group_id=DIMMER_GROUP, scene_id=1, name="Dim"))["success"]
+    r = await ws(7, type="hue_remote_scenes/store", group_id=DIMMER_GROUP, name="Other")
+    assert r["result"]["scene_id"] == 2  # 0 and 1 are the Hue button's
+
+    r = await ws(8, type="hue_remote_scenes/bind", ieee=str(dimmer.ieee), endpoint=1, group_id=DIMMER_GROUP)
+    assert r["result"]["results"] == {"6": "ok", "8": "ok", "5": "ok"}
+    app.press(dimmer, 0, DIMMER_GROUP)
+    assert app.state[app.bulb1.ieee]["current_level"] == 254
+    app.press(dimmer, 1, DIMMER_GROUP)
+    assert app.state[app.bulb1.ieee]["current_level"] == 40
+
+    # No HA scene cycle for gen 2 dimmers: the Hue button does it on the lights.
+    r = await ws(9, type="hue_remote_scenes/set_cycle", ieee=str(dimmer.ieee), group_id=DIMMER_GROUP, scene_ids=[0, 1])
+    assert not r["success"] and r["error"]["code"] == "invalid"
+
+
+async def test_dimmer_gen1_scene_cycle(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    """RWL021: on/off and dimming stay bound to the group; HA recalls the next scene on On presses."""
+    app = zigbee
+    dimmer = _add_remote(app, "00:17:88:01:00:00:00:06", 0x1006, RWL021_EPS, "RWL021", "Old dimmer")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    remotes = {r["ieee"]: r for r in (await ws(1, type="hue_remote_scenes/remotes"))["result"]["remotes"]}
+    r = remotes[str(dimmer.ieee)]
+    assert r["endpoints"] == [{"id": 1, "clusters": [6, 8, 5]}]  # not endpoint 2
+    assert not r["dial_supported"] and r["cycle"] is None
+    assert r["cycle_trigger"] == {"command": "on_press", "label": "On button"}
+
+    for msg_id, name in ((2, "Relax"), (3, "Read"), (4, "Night")):
+        assert (await ws(msg_id, type="hue_remote_scenes/store", group_id=GROUP, name=name))["success"]
+
+    # Bad requests.
+    r = await ws(5, type="hue_remote_scenes/set_cycle", ieee=str(dimmer.ieee), group_id=GROUP, scene_ids=[9])
+    assert r["error"]["code"] == "invalid"
+    r = await ws(6, type="hue_remote_scenes/set_cycle", ieee=str(app.dial.ieee), group_id=GROUP, scene_ids=[1])
+    assert r["error"]["code"] == "invalid"  # a Tap Dial recalls scenes itself
+
+    r = await ws(7, type="hue_remote_scenes/set_cycle", ieee=str(dimmer.ieee), group_id=GROUP, scene_ids=[3, 1, 2])
+    assert r["result"] == {"cycle": {"group_id": GROUP, "scene_ids": [3, 1, 2]}}
+    remotes = {r["ieee"]: r for r in (await ws(8, type="hue_remote_scenes/remotes"))["result"]["remotes"]}
+    assert remotes[str(dimmer.ieee)]["cycle"] == {"group_id": GROUP, "scene_ids": [3, 1, 2]}
+    (group,) = (await ws(9, type="hue_remote_scenes/groups"))["result"]["groups"]
+    assert group["cycles"] == [{"ieee": str(dimmer.ieee), "name": "Old dimmer", "scene_ids": [3, 1, 2]}]
+
+    clock = [1000.0]
+
+    async def press(command="on_press", seconds_later=1.0, ieee=str(dimmer.ieee)):
+        clock[0] += seconds_later
+        app.sent.clear()
+        # What ZHA fires for a Hue remote's 0xFC00 button notification.
+        hass.bus.async_fire("zha_event", {"device_ieee": ieee, "unique_id": "x", "device_id": "y",
+                                          "endpoint_id": 2, "cluster_id": 0xFC00, "command": command,
+                                          "args": [], "params": {}})
+        await hass.async_block_till_done()
+        return [c.scene_id for _, c in app.frames("group:")]
+
+    with patch("custom_components.hue_remote_scenes.manager.monotonic", lambda: clock[0]):
+        assert await press() == [3]  # first press: the first scene, one groupcast
+        assert await press() == [1]
+        assert await press() == [2]
+        assert await press() == [3]  # wraps
+        assert await press(seconds_later=30) == [3]  # after a pause: from the start
+        assert await press() == [1]
+        assert await press("off_press") == []  # other buttons: nothing from HA
+        assert await press("on_hold") == []
+        assert await press(ieee=str(app.dial.ieee)) == []  # another remote
+
+        # A deleted scene is skipped.
+        assert (await ws(10, type="hue_remote_scenes/delete", group_id=GROUP, scene_id=1))["success"]
+        assert await press(seconds_later=30) == [3]
+        assert await press() == [2]
+
+        # Stop cycling.
+        r = await ws(11, type="hue_remote_scenes/set_cycle", ieee=str(dimmer.ieee))
+        assert r["result"] == {"cycle": None}
+        assert await press() == []
+    (group,) = (await ws(12, type="hue_remote_scenes/groups"))["result"]["groups"]
+    assert group["cycles"] == []

@@ -206,6 +206,15 @@ def remotes(hass: HomeAssistant) -> list[dict[str, Any]]:
     return sorted(out, key=lambda r: r["name"].lower())
 
 
+def device_model(hass: HomeAssistant, ieee: str) -> str | None:
+    """ZHA's model string for a device, or None if ZHA doesn't know it."""
+    try:
+        device = _gateway(hass).devices.get(EUI64.convert(ieee))
+    except (HomeAssistantError, ValueError):
+        return None
+    return device.model if device is not None else None
+
+
 def _zigpy_device(hass: HomeAssistant, ieee: str) -> Any:
     device = _gateway(hass).devices.get(EUI64.convert(ieee))
     if device is None:
@@ -300,8 +309,8 @@ def lights(hass: HomeAssistant) -> list[dict[str, Any]]:
 async def async_find_dial_group(hass: HomeAssistant, ieee: str, timeout: float) -> dict[str, int]:
     """Wait for the remote to recall a scene; return the group and scene it used.
 
-    A Hue Tap Dial always recalls scenes on its own built-in group. To see the
-    press, bind its Scenes cluster to the coordinator first. It's asleep until a
+    A Hue Tap Dial (and a gen 2 Hue dimmer's Hue button) always recalls scenes on its
+    own built-in group. To see the press, bind its Scenes cluster to the coordinator first. It's asleep until a
     button is pressed, so keep retrying the bind until the press comes through.
     """
     gateway = _gateway(hass)

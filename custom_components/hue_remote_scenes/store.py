@@ -1,4 +1,5 @@
-"""Scene names and members, kept in HA storage (the lights only know ids)."""
+"""Scene names and members, kept in HA storage (the lights only know ids), plus what we
+remember about remotes: group bindings, a dial's built-in group, and scene cycles."""
 
 from __future__ import annotations
 
@@ -99,6 +100,29 @@ class SceneStore:
     ) -> None:
         entry = self.remotes.setdefault(ieee, {"groups": {}, "checked": None})
         entry["dial"] = {"group_id": int(group_id), "buttons": [list(b) for b in buttons]}
+        await self._async_save()
+
+    def cycle(self, ieee: str) -> dict[str, Any] | None:
+        """{"group_id": int, "scene_ids": [int, ...]}: scenes HA recalls on a button press."""
+        return self.remotes.get(ieee, {}).get("cycle")
+
+    def cycles_on(self, group_id: int) -> dict[str, dict[str, Any]]:
+        """{ieee: cycle} for remotes cycling through this group's scenes."""
+        return {
+            ieee: entry["cycle"]
+            for ieee, entry in self.remotes.items()
+            if entry.get("cycle") and entry["cycle"]["group_id"] == int(group_id)
+        }
+
+    async def async_set_cycle(
+        self, ieee: str, group_id: int | None, scene_ids: list[int] | None = None
+    ) -> None:
+        """Set a remote's scene cycle, or clear it (group_id None)."""
+        entry = self.remotes.setdefault(ieee, {"groups": {}, "checked": None})
+        if group_id is None:
+            entry.pop("cycle", None)
+        else:
+            entry["cycle"] = {"group_id": int(group_id), "scene_ids": [int(s) for s in scene_ids or []]}
         await self._async_save()
 
     async def _async_save(self) -> None:

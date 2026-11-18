@@ -13,6 +13,8 @@ hue_remote_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
 hue_remote_scenes/find_dial_group {ieee}                     -> the group a dial recalls scenes on (needs a button press)
 hue_remote_scenes/lights                                    -> lights that can join a group
 hue_remote_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
+hue_remote_scenes/set_cycle {ieee, group_id?, scene_ids?}    -> HA recalls the next scene on a button press
+                                                               (no group_id: stop)
 """
 
 from __future__ import annotations
@@ -31,7 +33,14 @@ from homeassistant.util import dt as dt_util
 from . import zigbee
 from .areas import device_area, group_areas
 from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_SCENES
-from .logic import SceneError, apply_bind_results, bindings_by_group, dial_buttons, group_bindings
+from .logic import (
+    SceneError,
+    apply_bind_results,
+    bindings_by_group,
+    cycle_trigger,
+    dial_buttons,
+    group_bindings,
+)
 from .manager import SceneManager
 
 GROUP = {vol.Required("group_id"): vol.Coerce(int)}
@@ -54,6 +63,7 @@ def async_register(hass: HomeAssistant) -> None:
         ws_find_dial_group,
         ws_lights,
         ws_create_group,
+        ws_set_cycle,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -105,6 +115,11 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
                 "buttons": [{"label": label, "scene_id": sid} for label, sid in dial["buttons"]],
             }
             for ieee, dial in manager.store.dials_on(group["id"]).items()
+        ]
+        # Remotes whose presses make HA cycle through these scene ids (needs HA running).
+        group["cycles"] = [
+            {"ieee": ieee, "name": remote_names.get(ieee, ieee), "scene_ids": cycle["scene_ids"]}
+            for ieee, cycle in manager.store.cycles_on(group["id"]).items()
         ]
         stored = manager.store.scenes(group["id"])
         group["scenes"] = sorted(
@@ -195,6 +210,10 @@ async def ws_remotes(hass, connection, msg, manager: SceneManager):
         remote["checked"] = manager.store.remotes.get(remote["ieee"], {}).get("checked")
         remote["dial_supported"] = dial_buttons(remote["model"]) is not None
         remote["dial"] = manager.store.dial(remote["ieee"])
+        # Presses HA can turn into scene recalls (needs HA running), and the cycle set up.
+        trigger = cycle_trigger(remote["model"])
+        remote["cycle_trigger"] = {"command": trigger[0], "label": trigger[1]} if trigger else None
+        remote["cycle"] = manager.store.cycle(remote["ieee"])
     return {"remotes": remotes}
 
 
@@ -278,3 +297,19 @@ async def ws_create_group(hass, connection, msg, manager: SceneManager):
     await zigbee.async_create_group(hass, msg["group_id"], msg["name"].strip(), msg["members"])
     async_dispatcher_send(hass, SIGNAL_SCENES)
     return {"ok": True}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "hue_remote_scenes/set_cycle",
+        vol.Required("ieee"): str,
+        # Leave out group_id (or send null) to stop cycling.
+        vol.Optional("group_id"): vol.Any(None, vol.Coerce(int)),
+        vol.Optional("scene_ids", default=list): [vol.All(vol.Coerce(int), vol.Range(0, 255))],
+    }
+)
+@websocket_api.async_response
+@_handler
+async def ws_set_cycle(hass, connection, msg, manager: SceneManager):
+    cycle = await manager.async_set_cycle(msg["ieee"], msg.get("group_id"), msg["scene_ids"])
+    return {"cycle": cycle}
