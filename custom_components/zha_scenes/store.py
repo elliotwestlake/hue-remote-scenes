@@ -11,6 +11,11 @@ from homeassistant.helpers.storage import Store
 from .const import SIGNAL_SCENES, STORAGE_KEY, STORAGE_VERSION
 
 
+def _key(value: int) -> str:
+    """Storage key for a group/scene id. int() first: zigpy's t.Group str()s as hex."""
+    return str(int(value))
+
+
 class SceneStore:
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -24,10 +29,10 @@ class SceneStore:
         self.remotes = data.get("remotes", {})
 
     def scenes(self, group_id: int) -> dict[str, dict[str, Any]]:
-        return self.groups.get(str(group_id), {})
+        return self.groups.get(_key(group_id), {})
 
     def scene(self, group_id: int, scene_id: int) -> dict[str, Any] | None:
-        return self.scenes(group_id).get(str(scene_id))
+        return self.scenes(group_id).get(_key(scene_id))
 
     def all(self) -> list[tuple[int, int, dict[str, Any]]]:
         return [
@@ -38,20 +43,20 @@ class SceneStore:
 
     async def async_set_group(self, group_id: int, scenes: dict[str, dict[str, Any]]) -> None:
         if scenes:
-            self.groups[str(group_id)] = scenes
+            self.groups[_key(group_id)] = scenes
         else:
-            self.groups.pop(str(group_id), None)
+            self.groups.pop(_key(group_id), None)
         await self._async_save()
 
     async def async_set(self, group_id: int, scene_id: int, scene: dict[str, Any]) -> None:
-        self.groups.setdefault(str(group_id), {})[str(scene_id)] = scene
+        self.groups.setdefault(_key(group_id), {})[_key(scene_id)] = scene
         await self._async_save()
 
     async def async_delete(self, group_id: int, scene_id: int) -> None:
-        scenes = self.groups.get(str(group_id), {})
-        scenes.pop(str(scene_id), None)
+        scenes = self.groups.get(_key(group_id), {})
+        scenes.pop(_key(scene_id), None)
         if not scenes:
-            self.groups.pop(str(group_id), None)
+            self.groups.pop(_key(group_id), None)
         await self._async_save()
 
     def remote_groups(self, ieee: str) -> dict[str, list[int]]:

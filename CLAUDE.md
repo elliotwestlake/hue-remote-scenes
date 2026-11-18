@@ -29,6 +29,7 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_sce
 - Bindings: we send ZDO `Bind_req`/`Unbind_req` ourselves (`MultiAddress(addrmode=1, nwk=group_id)`), one cluster at a time, because ZHA's `async_bind_to_group` only logs failures. The binding table is read with `Mgmt_Bind_req`, paged by `StartIndex`.
 - **Remembered bindings:** the binding table lives on the (usually asleep) remote, so we keep `{ieee: {groups: {gid: [clusters]}, checked}}`. Bind/unbind results update it (`logic.apply_bind_results`), and a table read replaces it and sets `checked`. Group cards show the remotes bound to them from this, without waking anything. Bindings made elsewhere only show up after **Check bindings**.
 - Remote detection: a non-ZDO endpoint with on/off, level or scenes **client** (out) clusters and no on/off server cluster.
+- **ZHA hands out zigpy `t.Group` ids**, an int that `str()`s as `"0x0005"` but goes over JSON as `5`. Always `int()` them: `zigbee.groups()` does, and `store._key()` uses `str(int(id))`. Mixing the two hid every saved scene from the panel. The e2e fake uses real `t.Group` ids to catch this.
 - Scene ids are allocated from 1 (0 is often a remote's default). Names are ours; the lights only store ids.
 - Community report (HA forum, Hue Tap Dial + ZHA): someone failed to store scenes on Hue bulbs via `zha.issue_zigbee_cluster_command` and ZHA Toolkit. Possibly a usage problem, but **unverified on real Hue bulbs**.
 

@@ -89,7 +89,7 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
         group["remotes"] = [
             {"ieee": ieee, "name": name, "clusters": clusters}
             for ieee, name in remote_names.items()
-            if (clusters := manager.store.remote_groups(ieee).get(str(group["id"])))
+            if (clusters := manager.store.remote_groups(ieee).get(str(int(group["id"]))))
         ]
         stored = manager.store.scenes(group["id"])
         group["scenes"] = sorted(

@@ -57,7 +57,7 @@ def _scene_members(group: Any) -> dict[str, tuple[Any, Any]]:
     for member in group.members:
         endpoint = member.endpoint
         if endpoint is not None and CLUSTER_SCENES in endpoint.in_clusters:
-            out[member_key(str(member.device.ieee), member.endpoint_id)] = (
+            out[member_key(str(member.device.ieee), int(member.endpoint_id))] = (
                 member,
                 endpoint.in_clusters[CLUSTER_SCENES],
             )
@@ -69,11 +69,12 @@ def groups(hass: HomeAssistant) -> list[dict[str, Any]]:
     for group in _gateway(hass).groups.values():
         out.append(
             {
-                "id": group.group_id,
+                # zigpy's t.Group is an int that str()s as "0x0005"; keep plain ints.
+                "id": int(group.group_id),
                 "name": group.name,
                 "members": [
                     {
-                        "key": member_key(str(m.device.ieee), m.endpoint_id),
+                        "key": member_key(str(m.device.ieee), int(m.endpoint_id)),
                         "ieee": str(m.device.ieee),
                         "name": m.device.name,
                         "scenes": m.endpoint is not None

@@ -118,7 +118,7 @@ def bindings_by_group(bindings: list[dict[str, int]]) -> dict[str, list[int]]:
     """group_bindings() output -> {"<group id>": [clusters]}."""
     out: dict[str, list[int]] = {}
     for b in bindings:
-        out.setdefault(str(b["group_id"]), []).append(b["cluster"])
+        out.setdefault(str(int(b["group_id"])), []).append(b["cluster"])
     return {gid: sorted(set(clusters)) for gid, clusters in sorted(out.items())}
 
 
@@ -128,10 +128,11 @@ def apply_bind_results(
     """Update a remote's remembered {"<group id>": [clusters]} with bind/unbind results."""
     out = {gid: list(clusters) for gid, clusters in known.items()}
     done = {cluster for cluster, result in results.items() if result == "ok"}
-    current = set(out.get(str(group_id), []))
+    key = str(int(group_id))  # zigpy's t.Group str()s as hex
+    current = set(out.get(key, []))
     current = current - done if unbind else current | done
     if current:
-        out[str(group_id)] = sorted(current)
+        out[key] = sorted(current)
     else:
-        out.pop(str(group_id), None)
+        out.pop(key, None)
     return out

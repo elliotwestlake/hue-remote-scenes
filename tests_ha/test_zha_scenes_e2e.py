@@ -206,9 +206,10 @@ def zigbee():
     members = []
     for d, ep_id in ((bulb1, 11), (bulb2, 11), (plug, 1)):
         zgroup.add_member(d.endpoints[ep_id])
-        members.append(SimpleNamespace(device=zha_devices[d.ieee], endpoint_id=ep_id, endpoint=d.endpoints[ep_id]))
-    zha_group = SimpleNamespace(group_id=GROUP, name="Living room", members=members, endpoint=zgroup.endpoint)
-    gateway = SimpleNamespace(groups={GROUP: zha_group}, devices=zha_devices)
+        members.append(SimpleNamespace(device=zha_devices[d.ieee], endpoint_id=t.uint8_t(ep_id), endpoint=d.endpoints[ep_id]))
+    # zgroup.group_id is zigpy's t.Group (str()s as "0x0005"), exactly what ZHA hands out.
+    zha_group = SimpleNamespace(group_id=zgroup.group_id, name="Living room", members=members, endpoint=zgroup.endpoint)
+    gateway = SimpleNamespace(groups={zgroup.group_id: zha_group}, devices=zha_devices)
     app.bulb1, app.bulb2, app.dial = bulb1, bulb2, dial
     with patch("custom_components.zha_scenes.zigbee.get_zha_gateway", return_value=gateway), \
          patch("homeassistant.components.panel_custom.async_register_panel"), \
