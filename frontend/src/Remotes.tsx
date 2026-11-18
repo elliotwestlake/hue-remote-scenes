@@ -192,9 +192,92 @@ function RemoteCard({ getHass, remote, groups, onChanged }: CardProps) {
         />
       )}
 
+      {remote.cycle_trigger && (
+        <CycleSetup getHass={getHass} remote={remote} groups={groups} busy={!!busy} act={act} onChanged={onChanged} />
+      )}
+
       {busy && <div className="status busy">{busy}</div>}
       {result && <div className={`status ${result.kind}`}>{result.text}</div>}
     </section>
+  );
+}
+
+interface CycleProps {
+  getHass: () => Hass;
+  remote: Remote;
+  groups: Group[];
+  busy: boolean;
+  act: (fn: () => Promise<string | void>, waiting?: string) => Promise<void>;
+  onChanged: () => void;
+}
+
+/**
+ * Remotes that can't recall scenes themselves (gen 1 Hue dimmer, Hue smart button):
+ * Home Assistant recalls the next scene in a list when the trigger press arrives.
+ */
+function CycleSetup({ getHass, remote, groups, busy, act, onChanged }: CycleProps) {
+  const cycle = remote.cycle;
+  const [groupId, setGroupId] = useState(cycle?.group_id ?? groups.find((g) => g.scenes.length)?.id ?? groups[0]?.id ?? 0);
+  const [picked, setPicked] = useState<number[]>(cycle?.scene_ids ?? []);
+  const group = groups.find((g) => g.id === groupId);
+
+  const toggle = (id: number) => setPicked((p) => (p.includes(id) ? p.filter((s) => s !== id) : [...p, id]));
+  const save = (stop: boolean) =>
+    act(async () => {
+      await getHass().callWS(
+        stop
+          ? { type: "hue_remote_scenes/set_cycle", ieee: remote.ieee }
+          : { type: "hue_remote_scenes/set_cycle", ieee: remote.ieee, group_id: groupId, scene_ids: picked },
+      );
+      onChanged();
+      return stop ? "Stopped cycling scenes." : `${remote.cycle_trigger!.label} now cycles ${picked.length} scene${picked.length === 1 ? "" : "s"}.`;
+    }, "Saving…");
+
+  return (
+    <div className="dial-setup">
+      <h3>Scene cycle (needs Home Assistant)</h3>
+      <p className="muted small">
+        This remote can't recall scenes by itself. Keep it bound to the group for on/off and dimming (that works without
+        Home Assistant); while Home Assistant is running, <strong>{remote.cycle_trigger!.label.toLowerCase()}</strong> recalls
+        the next scene below, in order. After a pause it starts from the first again.
+      </p>
+      <div className="inline-row">
+        <select
+          value={groupId}
+          disabled={!groups.length}
+          onChange={(e) => {
+            setGroupId(+e.target.value);
+            setPicked([]);
+          }}
+          aria-label="Group to cycle"
+        >
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="light-picks">
+        {(group?.scenes ?? []).map((s) => (
+          <label key={s.id} className="pick">
+            <input type="checkbox" checked={picked.includes(s.id)} onChange={() => toggle(s.id)} /> {s.name}
+            {picked.includes(s.id) && <span className="muted small"> #{picked.indexOf(s.id) + 1}</span>}
+          </label>
+        ))}
+        {group && !group.scenes.length && <span className="muted small">Save some scenes in this group first.</span>}
+      </div>
+      <div className="inline-row">
+        <button className="primary" disabled={busy || !picked.length} onClick={() => save(false)}>
+          <Icon name="check" /> Save cycle
+        </button>
+        {cycle && (
+          <button disabled={busy} onClick={() => save(true)}>
+            <Icon name="close" /> Stop
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -236,7 +319,7 @@ function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChange
       });
       onChanged();
       return `Its scene buttons use group ${hex(r.group_id)}${r.exists ? ", which ZHA already has" : ""}.`;
-    }, "Press one of the dial's scene buttons now, then again every few seconds until this finishes…");
+    }, "Press a scene button now (the Hue button on a dimmer), then again every few seconds until this finishes…");
 
   const create = () =>
     act(async () => {
@@ -257,8 +340,8 @@ function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChange
       {!dial ? (
         <>
           <p className="muted small">
-            This dial's buttons can recall scenes stored in the lights directly, even when Home Assistant is down. First,
-            find the group the dial uses (it's fixed in each dial).
+            This remote's scene buttons (a dimmer's Hue button) can recall scenes stored in the lights directly, even
+            when Home Assistant is down. First, find the group it uses (it's fixed in each remote).
           </p>
           <div className="inline-row">
             <button className="primary" disabled={busy} onClick={find}>
@@ -309,7 +392,7 @@ function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChange
               )}
             </li>
             <li>
-              Save a scene for each button ({dial.buttons.map(([label]) => dots(label)).join("  ")}) on the{" "}
+              Save a scene for each button ({dial.buttons.map(([label]) => (/^\d/.test(label) ? dots(label) : label)).join(", ")}) on the{" "}
               <strong>Scenes</strong> tab, in {group ? <strong>{group.name}</strong> : "the group"}.
             </li>
           </ol>
