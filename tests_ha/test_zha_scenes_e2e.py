@@ -162,6 +162,22 @@ class FakeApp:
             raise AssertionError(cluster)
         self._deliver(device, 0, 0, cluster | 0x8000, t.uint8_t(tsn).serialize() + payload)
 
+    def press(self, dial, scene_id: int, group_id: int) -> None:
+        """A Tap Dial scene button: wakes it, and recalls (group_id, scene_id) wherever its
+        Scenes cluster is bound: to the coordinator (HA sees it), or to the group (lights change)."""
+        self.unreachable.discard(dial.ieee)
+        hdr = foundation.ZCLHeader.cluster(self.get_sequence(), 0x05, direction=foundation.Direction.Client_to_Server)
+        payload = Scenes.ServerCommandDefs.recall.schema(group_id=group_id, scene_id=scene_id).serialize()
+        for b in self.bindings[dial.ieee]:
+            if b.ClusterId != Scenes.cluster_id:
+                continue
+            if b.DstAddress.addrmode == 3:
+                self._deliver(dial, 1, 260, Scenes.cluster_id, hdr.serialize() + payload)
+            elif b.DstAddress.nwk == group_id:
+                for ieee, table in self.scenes.items():
+                    if (group_id, scene_id) in table:
+                        self.state[ieee] = dict(table[(group_id, scene_id)])
+
     def frames(self, prefix: str):
         return [(h, c) for target, h, c in self.sent if target.startswith(prefix)]
 
@@ -209,7 +225,27 @@ def zigbee():
         members.append(SimpleNamespace(device=zha_devices[d.ieee], endpoint_id=t.uint8_t(ep_id), endpoint=d.endpoints[ep_id]))
     # zgroup.group_id is zigpy's t.Group (str()s as "0x0005"), exactly what ZHA hands out.
     zha_group = SimpleNamespace(group_id=zgroup.group_id, name="Living room", members=members, endpoint=zgroup.endpoint)
-    gateway = SimpleNamespace(groups={zgroup.group_id: zha_group}, devices=zha_devices)
+    gateway = SimpleNamespace(groups={zgroup.group_id: zha_group}, devices=zha_devices,
+                              coordinator_zha_device=SimpleNamespace(ieee=t.EUI64.convert("00:00:00:00:00:00:00:00")))
+
+    def _member(ref):
+        dev = app.devices[ref.ieee]
+        return SimpleNamespace(device=zha_devices[ref.ieee], endpoint_id=t.uint8_t(ref.endpoint_id),
+                               endpoint=dev.endpoints[ref.endpoint_id])
+
+    async def create_group(name, members, group_id=None):
+        zg = groups.add_group(group_id, name)
+        group = SimpleNamespace(group_id=zg.group_id, name=name, members=[], endpoint=zg.endpoint)
+
+        async def add_members(refs):
+            for ref in refs:
+                zg.add_member(app.devices[ref.ieee].endpoints[ref.endpoint_id])
+                group.members.append(_member(ref))
+        group.async_add_members = add_members
+        await add_members(members or [])
+        gateway.groups[zg.group_id] = group
+        return group
+    gateway.async_create_zigpy_group = create_group
     app.bulb1, app.bulb2, app.dial = bulb1, bulb2, dial
     with patch("custom_components.zha_scenes.zigbee.get_zha_gateway", return_value=gateway), \
          patch("homeassistant.components.panel_custom.async_register_panel"), \
@@ -377,7 +413,7 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
     assert r["result"]["remotes"] == [{
         "ieee": str(app.dial.ieee), "name": "Tap dial", "model": "RDM002", "manufacturer": "Signify",
         "battery": True, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}],
-        "area": None, "bound": [], "checked": None}]
+        "area": None, "bound": [], "checked": None, "dial_supported": True, "dial": None}]
 
     r = await ws(2, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP)
     assert r["success"], r
@@ -451,3 +487,85 @@ async def test_areas_and_remembered_bindings(hass: HomeAssistant, zigbee, hass_w
     entities.async_update_entity(ent.entity_id, area_id=hall.id)
     (group,) = (await ws(10, type="zha_scenes/groups"))["result"]["groups"]
     assert group["areas"] == ["Hall"]
+
+
+DIAL_GROUP = 0x9C21  # a Tap Dial's built-in group
+
+
+async def test_dial_setup(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    app = zigbee
+    app.unreachable.add(app.dial.ieee)  # asleep
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    # 1. Find the dial's group: wait for a press. The first press only wakes it (its
+    #    Scenes cluster isn't bound to the coordinator yet), the next one is seen.
+    with patch("custom_components.zha_scenes.zigbee.BIND_RETRY", 0):
+        await client.send_json({"id": 1, "type": "zha_scenes/find_dial_group", "ieee": str(app.dial.ieee)})
+        scenes_out = app.dial.endpoints[1].out_clusters[Scenes.cluster_id]
+
+        async def until(check):
+            for _ in range(200):
+                if check():
+                    return
+                await asyncio.sleep(0.01)
+            raise AssertionError("timed out")
+
+        await until(lambda: scenes_out._listeners)  # listening; binds failing while asleep
+        app.press(app.dial, 1, DIAL_GROUP)  # wakes it; nothing reaches HA yet
+        await until(lambda: any(b.DstAddress.addrmode == 3 for b in app.bindings[app.dial.ieee]))
+        app.press(app.dial, 1, DIAL_GROUP)  # now bound to the coordinator: HA sees it
+        r = await client.receive_json()
+    assert r["success"], r
+    assert r["result"] == {"group_id": DIAL_GROUP, "scene_id": 1, "exists": False}
+    coordinator_binds = [b for b in app.bindings[app.dial.ieee] if b.DstAddress.addrmode == 3]
+    assert [(b.ClusterId, b.DstAddress.endpoint) for b in coordinator_binds] == [(5, 1)]
+
+    (remote,) = (await ws(2, type="zha_scenes/remotes"))["result"]["remotes"]
+    assert remote["dial"] == {"group_id": DIAL_GROUP, "buttons": [["1 dot", 1], ["2 dots", 0], ["3 dots", 5], ["4 dots", 4]]}
+
+    # 2. Create a ZHA group with exactly that id, with both bulbs.
+    lights = (await ws(3, type="zha_scenes/lights"))["result"]["lights"]
+    assert [l["name"] for l in lights] == ["Lamp 1", "Lamp 2"]  # not the plug (no scenes), dial or coordinator
+    r = await ws(4, type="zha_scenes/create_group", group_id=DIAL_GROUP, name="Lounge dial",
+                 members=[l["key"] for l in lights])
+    assert r["success"], r
+    groups = {g["id"]: g for g in (await ws(5, type="zha_scenes/groups"))["result"]["groups"]}
+    dial_group = groups[DIAL_GROUP]
+    assert dial_group["name"] == "Lounge dial" and len(dial_group["members"]) == 2
+    assert dial_group["dials"] == [{"ieee": str(app.dial.ieee), "name": "Tap dial", "buttons": [
+        {"label": "1 dot", "scene_id": 1}, {"label": "2 dots", "scene_id": 0},
+        {"label": "3 dots", "scene_id": 5}, {"label": "4 dots", "scene_id": 4}]}]
+    # Running it again just adds missing members.
+    assert (await ws(6, type="zha_scenes/create_group", group_id=DIAL_GROUP, name="Lounge dial", members=[lights[0]["key"]]))["success"]
+
+    # 3. Save button scenes at the button's ids (2 dots = scene 0).
+    app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 254}
+    r = await ws(7, type="zha_scenes/store", group_id=DIAL_GROUP, scene_id=0, name="Bright")
+    assert r["success"] and r["result"]["scene_id"] == 0
+    app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 20}
+    await ws(8, type="zha_scenes/store", group_id=DIAL_GROUP, scene_id=1, name="Dim")
+    # A plain new scene in a dial's group skips the button ids.
+    r = await ws(9, type="zha_scenes/store", group_id=DIAL_GROUP, name="Extra")
+    assert r["result"]["scene_id"] == 2
+
+    # 4. Bind the dial to its group; then the button recalls the scene on the lights, no HA involved.
+    r = await ws(10, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=DIAL_GROUP)
+    assert r["result"]["results"] == {"6": "ok", "8": "ok", "5": "ok"}
+    app.press(app.dial, 0, DIAL_GROUP)  # 2 dots
+    assert app.state[app.bulb1.ieee]["current_level"] == 254
+    app.press(app.dial, 1, DIAL_GROUP)  # 1 dot
+    assert app.state[app.bulb1.ieee]["current_level"] == 20
+
+
+async def test_find_dial_group_times_out(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    with patch("custom_components.zha_scenes.zigbee.BIND_RETRY", 0):
+        await client.send_json({"id": 1, "type": "zha_scenes/find_dial_group", "ieee": str(zigbee.dial.ieee), "timeout": 5})
+        r = await client.receive_json()
+    assert not r["success"] and "Didn't see a button press" in r["error"]["message"]

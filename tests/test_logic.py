@@ -67,3 +67,17 @@ def test_apply_bind_results():
     after = L.apply_bind_results(after, 5, {6: "ok", 8: "no answer"}, unbind=True)
     assert after == {"7": [6], "5": [8]}
     assert L.apply_bind_results(after, 5, {8: "ok"}, unbind=True) == {"7": [6]}
+
+def test_next_scene_id_skips_dial_buttons():
+    assert L.next_scene_id({1}, reserved={0, 1, 4, 5}) == 2
+    assert L.next_scene_id({2, 3}, reserved={0, 1, 4, 5}) == 6
+
+def test_dial_buttons():
+    assert [sid for _, sid in L.dial_buttons("RDM002")] == [1, 0, 5, 4]
+    assert L.dial_buttons("rdm002") is not None
+    assert L.dial_buttons("RWL022") is None and L.dial_buttons(None) is None
+
+def test_parse_member_key():
+    assert L.parse_member_key("00:17:88:01:00:00:00:01/11") == ("00:17:88:01:00:00:00:01", 11)
+    with pytest.raises(L.SceneError):
+        L.parse_member_key("nonsense")

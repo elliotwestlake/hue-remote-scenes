@@ -10,6 +10,9 @@ zha_scenes/import  {group_id}                         -> scenes the lights alrea
 zha_scenes/remotes                                   -> remotes, their area and remembered bindings
 zha_scenes/bindings {ieee}                            -> the remote's group bindings (must be awake)
 zha_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
+zha_scenes/find_dial_group {ieee}                     -> the group a dial recalls scenes on (needs a button press)
+zha_scenes/lights                                    -> lights that can join a group
+zha_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
 """
 
 from __future__ import annotations
@@ -22,13 +25,13 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
 from . import zigbee
 from .areas import device_area, group_areas
 from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_SCENES
-from .logic import SceneError, apply_bind_results, bindings_by_group, group_bindings
+from .logic import SceneError, apply_bind_results, bindings_by_group, dial_buttons, group_bindings
 from .manager import SceneManager
 
 GROUP = {vol.Required("group_id"): vol.Coerce(int)}
@@ -48,6 +51,9 @@ def async_register(hass: HomeAssistant) -> None:
         ws_remotes,
         ws_bindings,
         ws_bind,
+        ws_find_dial_group,
+        ws_lights,
+        ws_create_group,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -90,6 +96,15 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
             {"ieee": ieee, "name": name, "clusters": clusters}
             for ieee, name in remote_names.items()
             if (clusters := manager.store.remote_groups(ieee).get(str(int(group["id"]))))
+        ]
+        # Dials whose built-in group this is: their buttons recall these scene ids.
+        group["dials"] = [
+            {
+                "ieee": ieee,
+                "name": remote_names.get(ieee, ieee),
+                "buttons": [{"label": label, "scene_id": sid} for label, sid in dial["buttons"]],
+            }
+            for ieee, dial in manager.store.dials_on(group["id"]).items()
         ]
         stored = manager.store.scenes(group["id"])
         group["scenes"] = sorted(
@@ -178,6 +193,8 @@ async def ws_remotes(hass, connection, msg, manager: SceneManager):
             for gid, clusters in manager.store.remote_groups(remote["ieee"]).items()
         ]
         remote["checked"] = manager.store.remotes.get(remote["ieee"], {}).get("checked")
+        remote["dial_supported"] = dial_buttons(remote["model"]) is not None
+        remote["dial"] = manager.store.dial(remote["ieee"])
     return {"remotes": remotes}
 
 
@@ -221,3 +238,43 @@ async def ws_bind(hass, connection, msg, manager: SceneManager):
         apply_bind_results(known, msg["group_id"], results, unbind=msg["unbind"]),
     )
     return {"results": {str(c): r for c, r in results.items()}}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "zha_scenes/find_dial_group",
+        vol.Required("ieee"): str,
+        vol.Optional("timeout", default=90): vol.All(vol.Coerce(float), vol.Range(5, 300)),
+    }
+)
+@websocket_api.async_response
+@_handler
+async def ws_find_dial_group(hass, connection, msg, manager: SceneManager):
+    found = await zigbee.async_find_dial_group(hass, msg["ieee"], msg["timeout"])
+    model = next((r["model"] for r in zigbee.remotes(hass) if r["ieee"] == msg["ieee"]), None)
+    await manager.store.async_set_dial(msg["ieee"], found["group_id"], dial_buttons(model) or [])
+    exists = any(g["id"] == found["group_id"] for g in zigbee.groups(hass))
+    return found | {"exists": exists}
+
+
+@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/lights"})
+@websocket_api.async_response
+@_handler
+async def ws_lights(hass, connection, msg, manager: SceneManager):
+    return {"lights": zigbee.lights(hass)}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "zha_scenes/create_group",
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=40)),
+        vol.Required("members"): vol.All([str], vol.Length(min=1)),
+    }
+    | GROUP
+)
+@websocket_api.async_response
+@_handler
+async def ws_create_group(hass, connection, msg, manager: SceneManager):
+    await zigbee.async_create_group(hass, msg["group_id"], msg["name"].strip(), msg["members"])
+    async_dispatcher_send(hass, SIGNAL_SCENES)
+    return {"ok": True}

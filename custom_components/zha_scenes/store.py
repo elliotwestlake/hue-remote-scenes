@@ -72,6 +72,28 @@ class SceneStore:
             entry["checked"] = checked
         await self._async_save()
 
+    def dial(self, ieee: str) -> dict[str, Any] | None:
+        """{"group_id": int, "buttons": [[label, scene id], ...]} once a dial's group is known."""
+        return self.remotes.get(ieee, {}).get("dial")
+
+    def dials_on(self, group_id: int) -> dict[str, dict[str, Any]]:
+        """{ieee: dial} for remotes whose built-in group is this group."""
+        return {
+            ieee: entry["dial"]
+            for ieee, entry in self.remotes.items()
+            if entry.get("dial") and entry["dial"]["group_id"] == int(group_id)
+        }
+
+    def dial_scene_ids(self, group_id: int) -> set[int]:
+        return {sid for dial in self.dials_on(group_id).values() for _label, sid in dial["buttons"]}
+
+    async def async_set_dial(
+        self, ieee: str, group_id: int, buttons: list[tuple[str, int]]
+    ) -> None:
+        entry = self.remotes.setdefault(ieee, {"groups": {}, "checked": None})
+        entry["dial"] = {"group_id": int(group_id), "buttons": [list(b) for b in buttons]}
+        await self._async_save()
+
     async def _async_save(self) -> None:
         await self._store.async_save({"groups": self.groups, "remotes": self.remotes})
         async_dispatcher_send(self.hass, SIGNAL_SCENES)

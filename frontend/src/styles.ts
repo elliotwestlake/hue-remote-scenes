@@ -96,6 +96,17 @@ code { font-size: 13px; padding: 1px 5px; border-radius: 6px; background: var(--
 .recall:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 24%, transparent) !important; }
 .chip.warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 18%, transparent); color: var(--warning-color, #ffa600); }
 .chip.on { background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-color); }
+.dial-buttons { display: flex; flex-direction: column; padding: 4px 12px; border-radius: 12px; background: var(--hl-soft); }
+.dots { width: 44px; flex: none; letter-spacing: 1px; color: var(--primary-color); font-size: 12px; }
+.scenes h3, .dial-buttons h3 { margin: 8px 0 2px; }
+.dial-setup { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider-color); }
+.dial-setup h3 { margin: 0; }
+.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+.steps li { line-height: 1.6; }
+.steps li.done::marker { color: var(--success-color, #43a047); }
+.light-picks { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0; }
+.pick { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.small-btn { padding: 2px 6px; font-size: 12px; }
 .chips.meta { margin-top: 6px; gap: 6px; }
 .new-scene input { flex: 1; min-width: 160px; }
 input[type=text] { min-width: 0; }

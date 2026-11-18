@@ -22,8 +22,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 
-from .const import CLUSTER_SCENES, REFRESH_ATTRS, REFRESH_DELAY, REMOTE_CLUSTERS
-from .logic import member_key, remote_endpoints
+from .const import CLUSTER_ON_OFF, CLUSTER_SCENES, REFRESH_ATTRS, REFRESH_DELAY, REMOTE_CLUSTERS
+from .logic import member_key, parse_member_key, remote_endpoints
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -273,3 +273,102 @@ async def async_binding_table(hass: HomeAssistant, ieee: str) -> list[dict[str, 
         index += len(table)
         if not table or index >= total:
             return entries
+
+
+SCENES_RECALL = 0x05
+BIND_RETRY = 2.0  # seconds between bind attempts while a remote sleeps
+
+
+def lights(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Every endpoint that can switch and store scenes, so it can join a scenes group."""
+    out = []
+    for device in _gateway(hass).devices.values():
+        if device.is_coordinator:
+            continue
+        for ep_id, ep in device.device.endpoints.items():
+            if ep_id and {CLUSTER_ON_OFF, CLUSTER_SCENES} <= set(ep.in_clusters):
+                out.append(
+                    {
+                        "key": member_key(str(device.ieee), int(ep_id)),
+                        "ieee": str(device.ieee),
+                        "name": device.name,
+                    }
+                )
+    return sorted(out, key=lambda light: light["name"].lower())
+
+
+async def async_find_dial_group(hass: HomeAssistant, ieee: str, timeout: float) -> dict[str, int]:
+    """Wait for the remote to recall a scene; return the group and scene it used.
+
+    A Hue Tap Dial always recalls scenes on its own built-in group. To see the
+    press, bind its Scenes cluster to the coordinator first. It's asleep until a
+    button is pressed, so keep retrying the bind until the press comes through.
+    """
+    gateway = _gateway(hass)
+    device = _zigpy_device(hass, ieee)
+    endpoint = next(
+        (ep for ep_id, ep in device.endpoints.items() if ep_id and CLUSTER_SCENES in ep.out_clusters),
+        None,
+    )
+    if endpoint is None:
+        raise HomeAssistantError("This remote doesn't send scene commands")
+    cluster = endpoint.out_clusters[CLUSTER_SCENES]
+    found: asyncio.Future[dict[str, int]] = hass.loop.create_future()
+
+    class _Listener:
+        def cluster_command(self, tsn: int, command_id: int, args: Any) -> None:
+            if command_id == SCENES_RECALL and not found.done():
+                found.set_result({"group_id": int(args.group_id), "scene_id": int(args.scene_id)})
+
+    async def _bind_to_coordinator() -> None:
+        destination = zdo_t.MultiAddress(
+            addrmode=3, ieee=gateway.coordinator_zha_device.ieee, endpoint=1
+        )
+        while not found.done():
+            try:
+                reply = await device.zdo.request(
+                    zdo_t.ZDOCmd.Bind_req, device.ieee, endpoint.endpoint_id, CLUSTER_SCENES, destination
+                )
+                if reply and reply[0] == zdo_t.Status.SUCCESS:
+                    return
+            except ERRORS:
+                pass
+            await asyncio.sleep(BIND_RETRY)
+
+    listener = _Listener()
+    cluster.add_listener(listener)
+    binder = hass.async_create_background_task(_bind_to_coordinator(), f"zha_scenes bind {ieee}")
+    try:
+        return await asyncio.wait_for(found, timeout)
+    except TimeoutError as err:
+        raise HomeAssistantError(
+            "Didn't see a button press. Press one of the scene buttons on the remote a few "
+            "times, a couple of seconds apart, while this is waiting."
+        ) from err
+    finally:
+        binder.cancel()
+        cluster.remove_listener(listener)
+
+
+async def async_create_group(
+    hass: HomeAssistant, group_id: int, name: str, member_keys: list[str]
+) -> None:
+    """Create a ZHA group with this exact id (a dial's), or add lights to it if it exists."""
+    from zha.zigbee.group import GroupMemberReference
+
+    gateway = _gateway(hass)
+    refs = {}
+    for key in member_keys:
+        ieee, endpoint_id = parse_member_key(key)
+        refs[key] = GroupMemberReference(ieee=EUI64.convert(ieee), endpoint_id=endpoint_id)
+    group = gateway.groups.get(group_id)
+    if group is None:
+        if any(g.name == name for g in gateway.groups.values()):
+            raise HomeAssistantError(f"ZHA already has a group called {name}")
+        group = await gateway.async_create_zigpy_group(name, list(refs.values()), group_id)
+        if group is None:
+            raise HomeAssistantError("ZHA didn't create the group")
+        return
+    existing = {member_key(str(m.device.ieee), int(m.endpoint_id)) for m in group.members}
+    if missing := [ref for key, ref in refs.items() if key not in existing]:
+        await group.async_add_members(missing)

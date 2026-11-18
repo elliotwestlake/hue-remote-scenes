@@ -34,14 +34,19 @@ class SceneManager:
     async def async_store(
         self, group_id: int, name: str | None = None, scene_id: int | None = None
     ) -> dict[str, Any]:
-        """Save the lights' current state: a new scene (name), or over an existing one (scene_id)."""
+        """Save the lights' current state: a new scene (name), or at scene_id (overwriting,
+        or creating it there with name, e.g. for a dial button)."""
         if scene_id is None:
             name = clean_name(name, SCENE_NAME_MAX)
             used = {int(s) for s in self.store.scenes(group_id)}
-            scene_id = next_scene_id(used)
+            # Leave the ids a dial's buttons recall for those buttons.
+            scene_id = next_scene_id(used, self.store.dial_scene_ids(group_id))
             scene: dict[str, Any] = {"name": name, "members": []}
+        elif (existing := self.store.scene(group_id, scene_id)) is None:
+            # A specific id that isn't saved yet, e.g. a dial button's slot.
+            scene = {"name": clean_name(name, SCENE_NAME_MAX), "members": []}
         else:
-            scene = dict(self._require(group_id, scene_id))
+            scene = dict(existing)
             if name is not None:
                 scene["name"] = clean_name(name, SCENE_NAME_MAX)
 

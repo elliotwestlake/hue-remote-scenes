@@ -64,17 +64,18 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
 
       <main>
         {error && <div className="status error">{error}</div>}
-        {groups && !groups.length && (
+        {groups && !groups.length && tab === "scenes" && (
           <div className="empty-state">
             <Icon name="lightbulb-group-outline" />
             <p>
               No ZHA groups yet. Create one under Settings → Devices & services → Zigbee Home Automation →
-              Configure → Groups, and add your lights to it.
+              Configure → Groups, and add your lights to it. For a Hue Tap Dial, use the Remotes tab instead: it
+              creates the group the dial needs.
             </p>
           </div>
         )}
         {groups && !!groups.length && tab === "scenes" && <Scenes getHass={getHass} groups={groups} onChanged={reload} />}
-        {groups && !!groups.length && tab === "remotes" && <Remotes getHass={getHass} groups={groups} />}
+        {groups && tab === "remotes" && <Remotes getHass={getHass} groups={groups} />}
       </main>
     </div>
   );

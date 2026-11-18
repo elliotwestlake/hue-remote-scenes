@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { CLUSTER_LABEL, errorText, type Group, type Hass, type Result, type Scene, type StoreResult } from "./types";
+import { CLUSTER_LABEL, dots, errorText, type DialButton, type Group, type Hass, type Result, type Scene, type StoreResult } from "./types";
 
 interface Props {
   getHass: () => Hass;
@@ -30,6 +30,10 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
   const names = Object.fromEntries(group.members.map((m) => [m.key, m.name]));
   const capable = group.members.filter((m) => m.scenes);
   const describe = (keys: string[]) => keys.map((k) => names[k] ?? k).join(", ");
+  // Scenes a dial's buttons recall live in the button slots, not the list.
+  const buttons: DialButton[] = group.dials[0]?.buttons ?? [];
+  const slotIds = new Set(group.dials.flatMap((d) => d.buttons.map((b) => b.scene_id)));
+  const listed = group.scenes.filter((s) => !slotIds.has(s.id));
 
   const run = async (msg: Record<string, unknown>, done: (r: any) => string) => {
     setBusy(true);
@@ -108,8 +112,30 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
         <p className="muted">None of this group's devices can store scenes.</p>
       ) : (
         <>
+          {buttons.length > 0 && (
+            <div className="dial-buttons">
+              <h3>
+                {group.dials.map((d) => d.name).join(", ")} buttons
+              </h3>
+              {buttons.map((b) => (
+                <ButtonSlot
+                  key={b.scene_id}
+                  button={b}
+                  scene={group.scenes.find((s) => s.id === b.scene_id)}
+                  busy={busy}
+                  onSave={(name) =>
+                    run({ type: "zha_scenes/store", scene_id: b.scene_id, ...(name ? { name } : {}) }, storeText("Saved"))
+                  }
+                  onRecall={() => run({ type: "zha_scenes/recall", scene_id: b.scene_id }, () => "Recalled")}
+                />
+              ))}
+              <p className="muted small">Hold any button to turn the lights off. Turn the dial to dim.</p>
+            </div>
+          )}
+
           <div className="scenes">
-            {group.scenes.map((s) => (
+            {buttons.length > 0 && <h3>Other scenes</h3>}
+            {listed.map((s) => (
               <SceneRow
                 key={s.id}
                 scene={s}
@@ -132,7 +158,7 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
                 }}
               />
             ))}
-            {!group.scenes.length && <p className="muted">No scenes yet.</p>}
+            {!listed.length && <p className="muted">No {buttons.length ? "other " : ""}scenes yet.</p>}
           </div>
 
           <form
@@ -222,6 +248,56 @@ function SceneRow({ scene, total, busy, missing, onRecall, onUpdate, onRename, o
             <Icon name="delete-outline" />
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+interface SlotProps {
+  button: DialButton;
+  scene: Scene | undefined;
+  busy: boolean;
+  onSave: (name: string | null) => void;
+  onRecall: () => void;
+}
+
+/** One dial button: the scene it recalls, saved at the button's fixed scene id. */
+function ButtonSlot({ button, scene, busy, onSave, onRecall }: SlotProps) {
+  const [name, setName] = useState("");
+  return (
+    <div className="scene-row">
+      <span className="dots" title={button.label}>{dots(button.label)}</span>
+      {scene ? (
+        <>
+          <button className="recall" disabled={busy} onClick={onRecall} title="Recall">
+            <Icon name="play" />
+          </button>
+          <div className="scene-main">
+            <div className="scene-name">{scene.name}</div>
+            <div className="muted small">{button.label} · scene {button.scene_id}</div>
+          </div>
+          <button
+            className="ghost round"
+            disabled={busy}
+            title="Overwrite with the current state"
+            onClick={() => confirm(`Overwrite "${scene.name}" with how the lights are now?`) && onSave(null)}
+          >
+            <Icon name="content-save-edit-outline" />
+          </button>
+        </>
+      ) : (
+        <form
+          className="inline-row scene-main"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim()) onSave(name);
+          }}
+        >
+          <input type="text" placeholder={`Scene for ${button.label}`} value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
+          <button type="submit" disabled={busy || !name.trim()}>
+            <Icon name="content-save-outline" /> Save current state
+          </button>
+        </form>
       )}
     </div>
   );

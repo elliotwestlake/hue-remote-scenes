@@ -28,6 +28,11 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_sce
 - Remove returning `NOT_FOUND` just means that light never had the scene; it isn't treated as a failure.
 - Bindings: we send ZDO `Bind_req`/`Unbind_req` ourselves (`MultiAddress(addrmode=1, nwk=group_id)`), one cluster at a time, because ZHA's `async_bind_to_group` only logs failures. The binding table is read with `Mgmt_Bind_req`, paged by `StartIndex`.
 - **Remembered bindings:** the binding table lives on the (usually asleep) remote, so we keep `{ieee: {groups: {gid: [clusters]}, checked}}`. Bind/unbind results update it (`logic.apply_bind_results`), and a table read replaces it and sets `checked`. Group cards show the remotes bound to them from this, without waking anything. Bindings made elsewhere only show up after **Check bindings**.
+- **Hue Tap Dial (RDM002) scene buttons:** with its Scenes cluster bound to a group, the dial recalls scenes **1, 0, 5, 4** (buttons 1–4, `logic.DIAL_BUTTONS`) on its **own fixed group id**, directly over Zigbee. Holding a button turns the lights off, and the dial dims (Z2M RDM002 docs). The buttons' Hue-specific `0xFC00` events also reach the coordinator, but that isn't the scene path.
+  - `zigbee.async_find_dial_group` binds the dial's Scenes **out** cluster to the coordinator (ZDO Bind_req, addrmode 3, coordinator endpoint 1), retrying every `BIND_RETRY` s while it sleeps, then waits for a recall (`cluster_command` 0x05 on that out cluster) and reads `group_id`. The coordinator binding is left in place (harmless).
+  - `zigbee.async_create_group` uses ZHA's `gateway.async_create_zigpy_group(name, members, group_id)` (needs a unique name) or `group.async_add_members`.
+  - The store keeps `remotes[ieee]["dial"] = {group_id, buttons}`. `SceneManager.async_store(scene_id=…, name=…)` creates a scene at a fixed id, and new scenes in a dial's group skip the button ids.
+  - Panel: "Scene buttons" steps on the remote card (find → create group → bind), and button slots on the group card. The Remotes tab works with no groups (Elliot re-paired everything).
 - Remote detection: a non-ZDO endpoint with on/off, level or scenes **client** (out) clusters and no on/off server cluster.
 - **ZHA hands out zigpy `t.Group` ids**, an int that `str()`s as `"0x0005"` but goes over JSON as `5`. Always `int()` them: `zigbee.groups()` does, and `store._key()` uses `str(int(id))`. Mixing the two hid every saved scene from the panel. The e2e fake uses real `t.Group` ids to catch this.
 - Scene ids are allocated from 1 (0 is often a remote's default). Names are ours; the lights only store ids.
@@ -35,8 +40,9 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_sce
 
 ## Status
 
-- [x] Backend, scene entities, actions, panel. 9 pure tests, 7 end-to-end tests pass.
+- [x] Backend, scene entities, actions, panel. 12 pure tests, 9 end-to-end tests pass.
 - [ ] On real hardware: store and recall a scene on a group of Hue bulbs, then press the bound Tap Dial.
+- [ ] Tap Dial scene buttons on real hardware: find group → create → bind → save the four slots → press each button.
 - [ ] Bind a Tap Dial to a group from the Remotes tab; check the binding table read. Check what the dial's buttons and rotation do once bound.
 - [ ] After migrating from Z2M: **Import from lights** on groups recreated with the same ids.
 - [x] Brand icons (`brand/icon.png`, `icon@2x.png`: three overlapping light circles, drawn with Pillow) and repo topics, for the Marketplace checks.

@@ -54,6 +54,17 @@ The **Remotes** tab lists devices that send on/off, dimming or scene commands. P
 
 ZHA Scenes remembers what each remote is bound to, so the group cards show their area and bound remotes without waking anything. Bindings made outside ZHA Scenes appear after **Check bindings** on the remote. A group's area is the one set on ZHA's group light entity, or otherwise the areas of its lights.
 
+## Hue Tap Dial scene buttons
+
+Once a Hue Tap Dial is set up, its four buttons recall scenes **stored in the lights**, without Home Assistant. Turning the dial dims, and holding any button turns the lights off. The catch is that each dial always uses its own built-in group, so the lights have to be in a group with exactly that ID. The **Remotes** tab handles this:
+
+1. **Find its group:** press one of the dial's scene buttons a few times while ZHA Scenes waits. It reads the group ID from the press.
+2. **Create the group:** tick the lights the dial should control. ZHA Scenes creates a ZHA group with the dial's ID (or adds the lights, if ZHA already has it).
+3. **Bind:** press a dial button, then **Bind**.
+4. On the **Scenes** tab, the group's card now has a slot per button (● to ●●●●). Set the lights, then **Save current state** in each slot.
+
+The buttons recall scenes 1, 0, 5 and 4 (the IDs come from [Zigbee2MQTT's Tap Dial docs](https://www.zigbee2mqtt.io/devices/8719514440937_8719514440999.html)). Other scenes you save in that group skip those IDs.
+
 ## Moving from Zigbee2MQTT
 
 ZHA can take over an existing Zigbee network from Zigbee2MQTT's `coordinator_backup.json` (ZHA setup → *Upload a manual backup*), which may save re-pairing. Scenes and bindings live on the devices, so they come along. Recreate your groups in ZHA **with the same group IDs** as in Zigbee2MQTT, then use **Import from lights**. Keep Zigbee2MQTT's data folder so you can go back.

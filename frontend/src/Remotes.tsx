@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
-import { CLUSTER_LABEL, errorText, type Binding, type Group, type Hass, type Remote, type Result } from "./types";
+import { CLUSTER_LABEL, dots, errorText, hex, type Binding, type Group, type Hass, type Light, type Remote, type Result } from "./types";
 
 interface Props {
   getHass: () => Hass;
@@ -11,11 +11,14 @@ export function Remotes({ getHass, groups }: Props) {
   const [remotes, setRemotes] = useState<Remote[] | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const reload = () =>
     getHass()
       .callWS<{ remotes: Remote[] }>({ type: "zha_scenes/remotes" })
       .then((r) => setRemotes(r.remotes))
       .catch((e) => setError(errorText(e)));
+
+  useEffect(() => {
+    reload();
   }, [getHass]);
 
   if (error) return <div className="status error">{error}</div>;
@@ -35,21 +38,28 @@ export function Remotes({ getHass, groups }: Props) {
         remotes are asleep most of the time: <strong>press a button on the remote just before</strong> each step.
       </p>
       {remotes.map((r) => (
-        <RemoteCard key={r.ieee} getHass={getHass} remote={r} groups={groups} />
+        <RemoteCard key={r.ieee} getHass={getHass} remote={r} groups={groups} onChanged={reload} />
       ))}
     </div>
   );
 }
 
-function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: Remote; groups: Group[] }) {
+interface CardProps {
+  getHass: () => Hass;
+  remote: Remote;
+  groups: Group[];
+  onChanged: () => void;
+}
+
+function RemoteCard({ getHass, remote, groups, onChanged }: CardProps) {
   const [endpoint, setEndpoint] = useState(remote.endpoints[0].id);
-  const [groupId, setGroupId] = useState(groups[0].id);
+  const [groupId, setGroupId] = useState(groups[0]?.id ?? 0);
   // Start from what we remember; reading the table (remote awake) replaces it.
   const [bindings, setBindings] = useState<Binding[]>(() =>
     remote.bound.flatMap((b) => b.clusters.map((cluster) => ({ endpoint: 0, cluster, group_id: b.group_id }))),
   );
   const [checked, setChecked] = useState<string | null>(remote.checked);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | false>(false);
   const [result, setResult] = useState<Result>(null);
 
   const ep = remote.endpoints.find((e) => e.id === endpoint) ?? remote.endpoints[0];
@@ -61,8 +71,8 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
     setChecked(new Date().toISOString());
   };
 
-  const act = async (fn: () => Promise<string | void>) => {
-    setBusy(true);
+  const act = async (fn: () => Promise<string | void>, waiting = "Waiting for the remote…") => {
+    setBusy(waiting);
     setResult(null);
     try {
       const text = await fn();
@@ -74,13 +84,13 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
     }
   };
 
-  const bind = (unbind: boolean) =>
+  const bind = (unbind: boolean, gid = groupId) =>
     act(async () => {
       const r = await getHass().callWS<{ results: Record<string, string> }>({
         type: "zha_scenes/bind",
         ieee: remote.ieee,
         endpoint: ep.id,
-        group_id: groupId,
+        group_id: gid,
         clusters: ep.clusters,
         unbind,
       });
@@ -89,13 +99,19 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
       if (failed.length === Object.keys(r.results).length)
         return `The remote didn't answer. Press a button on it and try again.`;
       if (failed.length)
-        return `${verb} ${groupName(groupId)}, but these didn't take: ${failed.map(([c, v]) => `${CLUSTER_LABEL[+c] ?? c} (${v})`).join(", ")}`;
+        return `${verb} ${groupName(gid)}, but these didn't take: ${failed.map(([c, v]) => `${CLUSTER_LABEL[+c] ?? c} (${v})`).join(", ")}`;
       try {
         await readBindings();
       } catch {
-        /* the remote went back to sleep; the bind still worked */
+        // The remote went back to sleep; the bind still worked, so update what we show.
+        const done = Object.entries(r.results).filter(([, v]) => v === "ok").map(([c]) => +c);
+        setBindings((prev) =>
+          unbind
+            ? prev.filter((b) => !(b.group_id === gid && done.includes(b.cluster)))
+            : [...prev, ...done.map((cluster) => ({ endpoint: ep.id, cluster, group_id: gid }))],
+        );
       }
-      return `${verb} ${groupName(groupId)}`;
+      return `${verb} ${groupName(gid)}`;
     });
 
   // Bound groups, with the clusters bound to each.
@@ -117,7 +133,7 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
             </div>
           </div>
         </div>
-        <button className="ghost" disabled={busy} onClick={() => act(async () => { await readBindings(); })}>
+        <button className="ghost" disabled={!!busy} onClick={() => act(async () => { await readBindings(); })}>
           <Icon name="link-variant" /> Check bindings
         </button>
       </div>
@@ -147,24 +163,158 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
             ))}
           </select>
         )}
-        <select value={groupId} onChange={(e) => setGroupId(+e.target.value)} aria-label="Group">
+        <select value={groupId} disabled={!groups.length} onChange={(e) => setGroupId(+e.target.value)} aria-label="Group">
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
             </option>
           ))}
         </select>
-        <button className="primary" disabled={busy} onClick={() => bind(false)}>
+        <button className="primary" disabled={!!busy || !groups.length} onClick={() => bind(false)}>
           <Icon name="link-variant-plus" /> Bind
         </button>
-        <button disabled={busy} onClick={() => bind(true)}>
+        <button disabled={!!busy || !groups.length} onClick={() => bind(true)}>
           <Icon name="link-variant-off" /> Unbind
         </button>
       </div>
       <div className="muted small">Sends: {ep.clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}</div>
 
-      {busy && <div className="status busy">Waiting for the remote…</div>}
+      {(remote.dial_supported || remote.dial) && (
+        <DialSetup
+          getHass={getHass}
+          remote={remote}
+          groups={groups}
+          busy={!!busy}
+          bound={remote.dial ? bound.has(remote.dial.group_id) : false}
+          act={act}
+          onBind={(gid) => bind(false, gid)}
+          onChanged={onChanged}
+        />
+      )}
+
+      {busy && <div className="status busy">{busy}</div>}
       {result && <div className={`status ${result.kind}`}>{result.text}</div>}
     </section>
+  );
+}
+
+interface DialProps {
+  getHass: () => Hass;
+  remote: Remote;
+  groups: Group[];
+  busy: boolean;
+  bound: boolean;
+  act: (fn: () => Promise<string | void>, waiting?: string) => Promise<void>;
+  onBind: (groupId: number) => void;
+  onChanged: () => void;
+}
+
+/**
+ * Hue Tap Dial: its buttons recall scenes 1, 0, 5 and 4 on its own built-in group,
+ * straight from the lights. Find that group, create it in ZHA with the lights, bind.
+ */
+function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChanged }: DialProps) {
+  const dial = remote.dial;
+  const group = dial ? groups.find((g) => g.id === dial.group_id) : undefined;
+  const [lights, setLights] = useState<Light[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [name, setName] = useState(remote.name);
+
+  useEffect(() => {
+    if (dial && !group && !lights)
+      getHass()
+        .callWS<{ lights: Light[] }>({ type: "zha_scenes/lights" })
+        .then((r) => setLights(r.lights))
+        .catch(() => setLights([]));
+  }, [dial, group, lights, getHass]);
+
+  const find = () =>
+    act(async () => {
+      const r = await getHass().callWS<{ group_id: number; exists: boolean }>({
+        type: "zha_scenes/find_dial_group",
+        ieee: remote.ieee,
+      });
+      onChanged();
+      return `Its scene buttons use group ${hex(r.group_id)}${r.exists ? ", which ZHA already has" : ""}.`;
+    }, "Press one of the dial's scene buttons now, then again every few seconds until this finishes…");
+
+  const create = () =>
+    act(async () => {
+      await getHass().callWS({ type: "zha_scenes/create_group", group_id: dial!.group_id, name, members: [...picked] });
+      return `Created ${name}. Now bind the dial to it.`;
+    }, "Adding the lights to the group…");
+
+  const toggle = (key: string) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  return (
+    <div className="dial-setup">
+      <h3>Scene buttons</h3>
+      {!dial ? (
+        <>
+          <p className="muted small">
+            This dial's buttons can recall scenes stored in the lights directly, even when Home Assistant is down. First,
+            find the group the dial uses (it's fixed in each dial).
+          </p>
+          <div className="inline-row">
+            <button className="primary" disabled={busy} onClick={find}>
+              <Icon name="magnify" /> Find its group
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <ol className="steps">
+            <li className="done">
+              Its buttons use group <code>{hex(dial.group_id)}</code>{" "}
+              <button className="ghost small-btn" disabled={busy} onClick={find}>Find again</button>
+            </li>
+            <li className={group ? "done" : ""}>
+              {group ? (
+                <>Group <strong>{group.name}</strong> has {group.members.length} light{group.members.length === 1 ? "" : "s"}.</>
+              ) : (
+                <>
+                  Create the group with the lights this dial should control:
+                  <div className="light-picks">
+                    {(lights ?? []).map((l) => (
+                      <label key={l.key} className="pick">
+                        <input type="checkbox" checked={picked.has(l.key)} onChange={() => toggle(l.key)} /> {l.name}
+                      </label>
+                    ))}
+                    {lights && !lights.length && <span className="muted small">No lights that can store scenes found.</span>}
+                  </div>
+                  <div className="inline-row">
+                    <input type="text" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} aria-label="Group name" />
+                    <button className="primary" disabled={busy || !picked.size || !name.trim()} onClick={create}>
+                      <Icon name="plus" /> Create group
+                    </button>
+                  </div>
+                </>
+              )}
+            </li>
+            <li className={bound ? "done" : ""}>
+              {bound ? (
+                <>Bound to {group?.name ?? hex(dial.group_id)}.</>
+              ) : (
+                <>
+                  Bind the dial to it (press a dial button first):{" "}
+                  <button disabled={busy || !group} onClick={() => onBind(dial.group_id)}>
+                    <Icon name="link-variant-plus" /> Bind
+                  </button>
+                </>
+              )}
+            </li>
+            <li>
+              Save a scene for each button ({dial.buttons.map(([label]) => dots(label)).join("  ")}) on the{" "}
+              <strong>Scenes</strong> tab, in {group ? <strong>{group.name}</strong> : "the group"}.
+            </li>
+          </ol>
+        </>
+      )}
+    </div>
   );
 }

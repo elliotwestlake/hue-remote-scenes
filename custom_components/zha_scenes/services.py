@@ -14,8 +14,9 @@ from .logic import SceneError
 STORE_SCHEMA = vol.Schema(
     {
         vol.Required("group_id"): vol.Coerce(int),
-        vol.Exclusive("name", "scene"): cv.string,
-        vol.Exclusive("scene_id", "scene"): vol.All(vol.Coerce(int), vol.Range(0, 255)),
+        # name: new scene. scene_id: overwrite it, or create it there if name is given too.
+        vol.Optional("name"): cv.string,
+        vol.Optional("scene_id"): vol.All(vol.Coerce(int), vol.Range(0, 255)),
     }
 )
 GROUP_SCHEMA = vol.Schema({vol.Required("group_id"): vol.Coerce(int)})

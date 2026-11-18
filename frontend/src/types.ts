@@ -26,6 +26,18 @@ export interface Group {
   members: Member[];
   scenes: Scene[];
   remotes: { ieee: string; name: string; clusters: number[] }[]; // remembered bindings
+  dials: { ieee: string; name: string; buttons: DialButton[] }[]; // dials whose built-in group this is
+}
+
+export interface DialButton {
+  label: string; // "1 dot"
+  scene_id: number;
+}
+
+export interface Light {
+  key: string;
+  ieee: string;
+  name: string;
 }
 
 export interface Remote {
@@ -38,6 +50,8 @@ export interface Remote {
   endpoints: { id: number; clusters: number[] }[];
   bound: { group_id: number; clusters: number[] }[]; // remembered, see `checked`
   checked: string | null; // when the binding table was last read from the remote
+  dial_supported: boolean; // its buttons recall fixed scenes on a built-in group (Hue Tap Dial)
+  dial: { group_id: number; buttons: [string, number][] } | null;
 }
 
 export interface Binding {
@@ -57,3 +71,7 @@ export const CLUSTER_LABEL: Record<number, string> = { 6: "On/off", 8: "Dimming"
 export const errorText = (e: any) => String(e?.message ?? e);
 
 export type Result = { kind: "ok" | "error"; text: string } | null;
+
+export const hex = (id: number) => `0x${id.toString(16).padStart(4, "0").toUpperCase()}`;
+
+export const dots = (label: string) => "●".repeat(parseInt(label, 10) || 1);

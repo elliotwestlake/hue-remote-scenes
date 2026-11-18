@@ -7,7 +7,8 @@ that pair. Names are ours; we keep them in HA storage.
 Stored format (HA storage):
 
     {"groups": {"<group id>": {"<scene id>": {"name": "Relax", "members": ["<ieee>/<ep>", ...]}}},
-     "remotes": {"<ieee>": {"groups": {"<group id>": [<cluster>, ...]}, "checked": "<iso time>"|None}}}
+     "remotes": {"<ieee>": {"groups": {"<group id>": [<cluster>, ...]}, "checked": "<iso time>"|None,
+                            "dial_group": <group id>|None}}}
 
 A remote's binding table lives on the remote, which is usually asleep, so we remember
 what we last bound or read ("checked" is set only when the table was actually read).
@@ -29,9 +30,30 @@ def member_key(ieee: str, endpoint_id: int) -> str:
     return f"{ieee}/{endpoint_id}"
 
 
-def next_scene_id(used: set[int]) -> int:
+def parse_member_key(key: str) -> tuple[str, int]:
+    try:
+        ieee, endpoint = key.rsplit("/", 1)
+        return ieee, int(endpoint)
+    except ValueError as err:
+        raise SceneError(f"Bad light '{key}'") from err
+
+
+# Remotes that recall fixed scene ids on their own built-in group once their Scenes
+# cluster is bound to it (no HA involved). Hue Tap Dial: the four buttons recall
+# scenes 1, 0, 5 and 4 (Zigbee2MQTT's RDM002 docs). (label, scene id) per button.
+DIAL_BUTTONS: dict[str, list[tuple[str, int]]] = {
+    "RDM002": [("1 dot", 1), ("2 dots", 0), ("3 dots", 5), ("4 dots", 4)],
+}
+
+
+def dial_buttons(model: str | None) -> list[tuple[str, int]] | None:
+    return DIAL_BUTTONS.get((model or "").upper())
+
+
+def next_scene_id(used: set[int], reserved: set[int] | frozenset[int] = frozenset()) -> int:
+    """Lowest free scene id, skipping ones a dial's buttons recall."""
     for scene_id in range(SCENE_ID_MIN, SCENE_ID_MAX + 1):
-        if scene_id not in used:
+        if scene_id not in used and scene_id not in reserved:
             return scene_id
     raise SceneError("This group already has 255 scenes")
 
