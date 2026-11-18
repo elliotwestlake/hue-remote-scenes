@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "./Icon";
+import { Logo } from "./Logo";
 import { Remotes } from "./Remotes";
 import { Scenes } from "./Scenes";
 import { errorText, type Group, type Hass } from "./types";
@@ -49,7 +50,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
               <Icon name="menu" />
             </button>
           )}
-          <Icon name="palette-outline" className="brand" />
+          <Logo />
           <h1>Hue remote scenes</h1>
         </div>
         <nav className="tabs" role="tablist">

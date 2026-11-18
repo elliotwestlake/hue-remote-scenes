@@ -16,8 +16,8 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
   - `services.py`: `store_scene`, `import_scenes` (both return a response). Recall is `scene.turn_on`.
   - `logic.py`: pure helpers (no HA or zigpy imports), unit-tested in `tests/`.
   - `frontend/hue-remote-scenes-panel.js`: **built artifact**. Don't edit it. Run `npm run build` in `/frontend`.
-- `frontend/src/`: React 18 panel copied from hive-local's shell (`main.tsx`, `Icon.tsx`, base styles). `Scenes.tsx` (a card per group) and `Remotes.tsx`.
-- `docs/`: README screenshots (light and dark), rendered from the built panel bundle with mock data in headless Chromium.
+- `frontend/src/`: React 18 panel copied from hive-local's shell (`main.tsx`, `Icon.tsx`, base styles). `Logo.tsx` is the brand mark in the header. `Scenes.tsx` (a card per group) and `Remotes.tsx`.
+- `docs/`: README screenshots (light and dark), rendered from the built panel bundle with mock data in headless Chromium, framed on a brand-gradient background.
 - `tests_ha/`: end-to-end tests with `pytest-homeassistant-custom-component` (HA 2026.2.3, zha 0.0.90). Real zigpy `Device`s and a zigpy `Groups`, a fake radio that decodes every frame and answers like real bulbs/remotes, and a fake ZHA gateway. Not run in CI (CI only installs `pytest`).
 
 ## Key facts (zigpy 0.92 / zha 0.0.90)

@@ -23,7 +23,9 @@ export const styles = /* css */ `
 header { position: sticky; top: 0; z-index: 2; background: var(--app-header-background-color, var(--primary-color)); color: var(--app-header-text-color, #fff); border-bottom: var(--app-header-border-bottom, none); }
 .toolbar-row { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; }
 .toolbar-row h1 { font-size: 20px; font-weight: 400; margin: 0; }
-.toolbar-row .brand { --mdc-icon-size: 24px; opacity: .9; }
+.logo { position: relative; width: 28px; height: 28px; flex: none; }
+.logo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.logo-ring { position: absolute; inset: 1px; border-radius: 50%; background: conic-gradient(#ffb020, #ff6a3d, #ff4f8b, #b65cff, #5b6bff, #2f9bff, #19c3c0, #7fd36b, #ffb020); -webkit-mask: radial-gradient(circle, transparent 9.6px, #000 10.2px); mask: radial-gradient(circle, transparent 9.6px, #000 10.2px); }
 .toolbar-row .menu { background: transparent; border: 0; color: inherit; padding: 8px; margin-left: -8px; border-radius: 50%; }
 .toolbar-row .menu:hover { background: rgba(255,255,255,.12); }
 .device-name { font-size: 14px; opacity: .8; }
