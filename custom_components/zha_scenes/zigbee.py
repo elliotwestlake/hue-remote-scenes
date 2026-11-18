@@ -74,6 +74,7 @@ def groups(hass: HomeAssistant) -> list[dict[str, Any]]:
                 "members": [
                     {
                         "key": member_key(str(m.device.ieee), m.endpoint_id),
+                        "ieee": str(m.device.ieee),
                         "name": m.device.name,
                         "scenes": m.endpoint is not None
                         and CLUSTER_SCENES in m.endpoint.in_clusters,

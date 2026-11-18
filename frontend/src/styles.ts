@@ -96,6 +96,7 @@ code { font-size: 13px; padding: 1px 5px; border-radius: 6px; background: var(--
 .recall:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 24%, transparent) !important; }
 .chip.warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 18%, transparent); color: var(--warning-color, #ffa600); }
 .chip.on { background: color-mix(in srgb, var(--primary-color) 14%, transparent); color: var(--primary-color); }
+.chips.meta { margin-top: 6px; gap: 6px; }
 .new-scene input { flex: 1; min-width: 160px; }
 input[type=text] { min-width: 0; }
 

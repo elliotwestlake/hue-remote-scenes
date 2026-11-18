@@ -9,7 +9,8 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_sce
   - `config_flow.py`: one step, aborts if ZHA isn't loaded. `single_config_entry` in the manifest.
   - `zigbee.py`: all ZHA/zigpy access, via `homeassistant.components.zha.helpers.get_zha_gateway(hass)` → `.groups` (id → ZHA Group: `.name`, `.members` with `.device`/`.endpoint_id`/`.endpoint`, `.endpoint` = zigpy group endpoint) and `.devices` (EUI64 → ZHA Device: `.device` is zigpy).
   - `manager.py`: `SceneManager`, the operations shared by websocket, actions and entities.
-  - `store.py`: names and member lists in HA storage (`.storage/zha_scenes`), fires `SIGNAL_SCENES` on change.
+  - `store.py`: scene names and member lists, plus each remote's remembered group bindings, in HA storage (`.storage/zha_scenes`). Fires `SIGNAL_SCENES` on change.
+  - `areas.py`: HA areas. A group's area is the area set on ZHA's group entity (`light_zha_group_0x<id>`, platform `zha`, owned by the coordinator), otherwise its members' device areas. Devices are looked up by identifier `("zha", str(ieee))`.
   - `scene.py`: one `scene` entity per stored scene, added and removed as the store changes. Unique id `<group>_<scene>`.
   - `websocket.py`: `zha_scenes/groups|subscribe|store|recall|rename|delete|import|remotes|bindings|bind`.
   - `services.py`: `store_scene`, `import_scenes` (both return a response). Recall is `scene.turn_on`.
@@ -26,13 +27,14 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_sce
 - Store requires the light to already be a member of the group, which ZHA's group management does.
 - Remove returning `NOT_FOUND` just means that light never had the scene; it isn't treated as a failure.
 - Bindings: we send ZDO `Bind_req`/`Unbind_req` ourselves (`MultiAddress(addrmode=1, nwk=group_id)`), one cluster at a time, because ZHA's `async_bind_to_group` only logs failures. The binding table is read with `Mgmt_Bind_req`, paged by `StartIndex`.
+- **Remembered bindings:** the binding table lives on the (usually asleep) remote, so we keep `{ieee: {groups: {gid: [clusters]}, checked}}`. Bind/unbind results update it (`logic.apply_bind_results`), and a table read replaces it and sets `checked`. Group cards show the remotes bound to them from this, without waking anything. Bindings made elsewhere only show up after **Check bindings**.
 - Remote detection: a non-ZDO endpoint with on/off, level or scenes **client** (out) clusters and no on/off server cluster.
 - Scene ids are allocated from 1 (0 is often a remote's default). Names are ours; the lights only store ids.
 - Community report (HA forum, Hue Tap Dial + ZHA): someone failed to store scenes on Hue bulbs via `zha.issue_zigbee_cluster_command` and ZHA Toolkit. Possibly a usage problem, but **unverified on real Hue bulbs**.
 
 ## Status
 
-- [x] Backend, scene entities, actions, panel. 7 pure tests, 6 end-to-end tests pass.
+- [x] Backend, scene entities, actions, panel. 9 pure tests, 7 end-to-end tests pass.
 - [ ] On real hardware: store and recall a scene on a group of Hue bulbs, then press the bound Tap Dial.
 - [ ] Bind a Tap Dial to a group from the Remotes tab; check the binding table read. Check what the dial's buttons and rotation do once bound.
 - [ ] After migrating from Z2M: **Import from lights** on groups recreated with the same ids.

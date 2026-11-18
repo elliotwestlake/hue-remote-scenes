@@ -1,13 +1,13 @@
 """Websocket API used by the sidebar panel.
 
-zha_scenes/groups                                    -> ZHA groups, their members and stored scenes
+zha_scenes/groups                                    -> ZHA groups: members, areas, scenes, bound remotes
 zha_scenes/subscribe                                 -> pushes {} whenever stored scenes change
 zha_scenes/store   {group_id, name? , scene_id?}     -> new scene (name) or re-save (scene_id)
 zha_scenes/recall  {group_id, scene_id, transition?}
 zha_scenes/rename  {group_id, scene_id, name}
 zha_scenes/delete  {group_id, scene_id}
 zha_scenes/import  {group_id}                         -> scenes the lights already have
-zha_scenes/remotes                                   -> devices that can be bound to a group
+zha_scenes/remotes                                   -> remotes, their area and remembered bindings
 zha_scenes/bindings {ieee}                            -> the remote's group bindings (must be awake)
 zha_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
 """
@@ -23,10 +23,12 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.util import dt as dt_util
 
 from . import zigbee
+from .areas import device_area, group_areas
 from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_SCENES
-from .logic import SceneError, group_bindings
+from .logic import SceneError, apply_bind_results, bindings_by_group, group_bindings
 from .manager import SceneManager
 
 GROUP = {vol.Required("group_id"): vol.Coerce(int)}
@@ -80,8 +82,15 @@ def _handler(
 @websocket_api.async_response
 @_handler
 async def ws_groups(hass, connection, msg, manager: SceneManager):
+    remote_names = {r["ieee"]: r["name"] for r in zigbee.remotes(hass)}
     out = []
     for group in zigbee.groups(hass):
+        group["areas"] = group_areas(hass, group["id"], [m["ieee"] for m in group["members"]])
+        group["remotes"] = [
+            {"ieee": ieee, "name": name, "clusters": clusters}
+            for ieee, name in remote_names.items()
+            if (clusters := manager.store.remote_groups(ieee).get(str(group["id"])))
+        ]
         stored = manager.store.scenes(group["id"])
         group["scenes"] = sorted(
             (
@@ -161,7 +170,15 @@ async def ws_import(hass, connection, msg, manager: SceneManager):
 @websocket_api.async_response
 @_handler
 async def ws_remotes(hass, connection, msg, manager: SceneManager):
-    return {"remotes": zigbee.remotes(hass)}
+    remotes = zigbee.remotes(hass)
+    for remote in remotes:
+        remote["area"] = device_area(hass, remote["ieee"])
+        remote["bound"] = [
+            {"group_id": int(gid), "clusters": clusters}
+            for gid, clusters in manager.store.remote_groups(remote["ieee"]).items()
+        ]
+        remote["checked"] = manager.store.remotes.get(remote["ieee"], {}).get("checked")
+    return {"remotes": remotes}
 
 
 @websocket_api.websocket_command(
@@ -170,8 +187,11 @@ async def ws_remotes(hass, connection, msg, manager: SceneManager):
 @websocket_api.async_response
 @_handler
 async def ws_bindings(hass, connection, msg, manager: SceneManager):
-    entries = await zigbee.async_binding_table(hass, msg["ieee"])
-    return {"bindings": group_bindings(entries)}
+    bindings = group_bindings(await zigbee.async_binding_table(hass, msg["ieee"]))
+    await manager.store.async_set_remote(
+        msg["ieee"], bindings_by_group(bindings), checked=dt_util.utcnow().isoformat()
+    )
+    return {"bindings": bindings}
 
 
 @websocket_api.websocket_command(
@@ -194,5 +214,10 @@ async def ws_bind(hass, connection, msg, manager: SceneManager):
         msg["group_id"],
         msg["clusters"],
         unbind=msg["unbind"],
+    )
+    known = manager.store.remote_groups(msg["ieee"])
+    await manager.store.async_set_remote(
+        msg["ieee"],
+        apply_bind_results(known, msg["group_id"], results, unbind=msg["unbind"]),
     )
     return {"results": {str(c): r for c, r in results.items()}}

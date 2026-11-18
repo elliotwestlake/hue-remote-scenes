@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { errorText, type Group, type Hass, type Result, type Scene, type StoreResult } from "./types";
+import { CLUSTER_LABEL, errorText, type Group, type Hass, type Result, type Scene, type StoreResult } from "./types";
 
 interface Props {
   getHass: () => Hass;
@@ -70,6 +70,20 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
               Group {group.id} · {capable.length} light{capable.length === 1 ? "" : "s"}
               {group.members.length > capable.length && ` (+${group.members.length - capable.length} without scenes)`}
             </div>
+            {(group.areas.length > 0 || group.remotes.length > 0) && (
+              <div className="chips meta">
+                {group.areas.map((a) => (
+                  <span key={a} className="chip" title="Area">
+                    <Icon name="home-outline" /> {a}
+                  </span>
+                ))}
+                {group.remotes.map((r) => (
+                  <span key={r.ieee} className="chip on" title={`Bound remote: ${r.clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}`}>
+                    <Icon name="remote" /> {r.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <button

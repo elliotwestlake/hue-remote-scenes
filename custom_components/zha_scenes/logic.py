@@ -6,7 +6,11 @@ that pair. Names are ours; we keep them in HA storage.
 
 Stored format (HA storage):
 
-    {"groups": {"<group id>": {"<scene id>": {"name": "Relax", "members": ["<ieee>/<ep>", ...]}}}}
+    {"groups": {"<group id>": {"<scene id>": {"name": "Relax", "members": ["<ieee>/<ep>", ...]}}},
+     "remotes": {"<ieee>": {"groups": {"<group id>": [<cluster>, ...]}, "checked": "<iso time>"|None}}}
+
+A remote's binding table lives on the remote, which is usually asleep, so we remember
+what we last bound or read ("checked" is set only when the table was actually read).
 """
 
 from __future__ import annotations
@@ -108,3 +112,26 @@ def group_bindings(entries: list[dict[str, Any]]) -> list[dict[str, int]]:
         ),
         key=lambda b: (b["group_id"], b["endpoint"], b["cluster"]),
     )
+
+
+def bindings_by_group(bindings: list[dict[str, int]]) -> dict[str, list[int]]:
+    """group_bindings() output -> {"<group id>": [clusters]}."""
+    out: dict[str, list[int]] = {}
+    for b in bindings:
+        out.setdefault(str(b["group_id"]), []).append(b["cluster"])
+    return {gid: sorted(set(clusters)) for gid, clusters in sorted(out.items())}
+
+
+def apply_bind_results(
+    known: dict[str, list[int]], group_id: int, results: dict[int, str], *, unbind: bool
+) -> dict[str, list[int]]:
+    """Update a remote's remembered {"<group id>": [clusters]} with bind/unbind results."""
+    out = {gid: list(clusters) for gid, clusters in known.items()}
+    done = {cluster for cluster, result in results.items() if result == "ok"}
+    current = set(out.get(str(group_id), []))
+    current = current - done if unbind else current | done
+    if current:
+        out[str(group_id)] = sorted(current)
+    else:
+        out.pop(str(group_id), None)
+    return out

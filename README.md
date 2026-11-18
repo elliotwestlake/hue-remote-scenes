@@ -52,6 +52,8 @@ Both return a response with the result (which lights saved it, or which scenes w
 
 The **Remotes** tab lists devices that send on/off, dimming or scene commands. Pick a group and press **Bind**. Battery remotes sleep, so **press a button on the remote just before** binding or checking bindings.
 
+ZHA Scenes remembers what each remote is bound to, so the group cards show their area and bound remotes without waking anything. Bindings made outside ZHA Scenes appear after **Check bindings** on the remote. A group's area is the one set on ZHA's group light entity, or otherwise the areas of its lights.
+
 ## Moving from Zigbee2MQTT
 
 ZHA can take over an existing Zigbee network from Zigbee2MQTT's `coordinator_backup.json` (ZHA setup → *Upload a manual backup*), which may save re-pairing. Scenes and bindings live on the devices, so they come along. Recreate your groups in ZHA **with the same group IDs** as in Zigbee2MQTT, then use **Import from lights**. Keep Zigbee2MQTT's data folder so you can go back.

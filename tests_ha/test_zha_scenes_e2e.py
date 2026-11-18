@@ -375,7 +375,8 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
     r = await ws(1, type="zha_scenes/remotes")
     assert r["result"]["remotes"] == [{
         "ieee": str(app.dial.ieee), "name": "Tap dial", "model": "RDM002", "manufacturer": "Signify",
-        "battery": True, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}]}]
+        "battery": True, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}],
+        "area": None, "bound": [], "checked": None}]
 
     r = await ws(2, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP)
     assert r["success"], r
@@ -399,3 +400,53 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
     assert r["result"]["results"] == {"6": "no answer"}
     r = await ws(7, type="zha_scenes/bindings", ieee=str(app.dial.ieee))
     assert not r["success"] and "Press a button" in r["error"]["message"]
+
+
+async def test_areas_and_remembered_bindings(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er
+    app = zigbee
+    zha_entry = MockConfigEntry(domain="zha")
+    zha_entry.add_to_hass(hass)
+    areas, devices = ar.async_get(hass), dr.async_get(hass)
+    lounge, hall = areas.async_create("Lounge"), areas.async_create("Hall")
+    for dev, area in ((app.bulb1, lounge), (app.bulb2, lounge), (app.dial, hall)):
+        d = devices.async_get_or_create(config_entry_id=zha_entry.entry_id, identifiers={("zha", str(dev.ieee))})
+        devices.async_update_device(d.id, area_id=area.id)
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    # Area from the members; no remotes known yet.
+    (group,) = (await ws(1, type="zha_scenes/groups"))["result"]["groups"]
+    assert group["areas"] == ["Lounge"] and group["remotes"] == []
+    (remote,) = (await ws(2, type="zha_scenes/remotes"))["result"]["remotes"]
+    assert remote["area"] == "Hall" and remote["bound"] == [] and remote["checked"] is None
+
+    # Binding is remembered without reading the table.
+    await ws(3, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[6, 8])
+    (group,) = (await ws(4, type="zha_scenes/groups"))["result"]["groups"]
+    assert group["remotes"] == [{"ieee": str(app.dial.ieee), "name": "Tap dial", "clusters": [6, 8]}]
+    (remote,) = (await ws(5, type="zha_scenes/remotes"))["result"]["remotes"]
+    assert remote["bound"] == [{"group_id": GROUP, "clusters": [6, 8]}] and remote["checked"] is None
+
+    # Reading the table replaces what we remember (here: something else added scenes) and sets checked.
+    app.bindings[app.dial.ieee].append(zdo_t.Binding(
+        SrcAddress=app.dial.ieee, SrcEndpoint=1, ClusterId=5, DstAddress=zdo_t.MultiAddress(addrmode=1, nwk=GROUP)))
+    await ws(6, type="zha_scenes/bindings", ieee=str(app.dial.ieee))
+    (remote,) = (await ws(7, type="zha_scenes/remotes"))["result"]["remotes"]
+    assert remote["bound"] == [{"group_id": GROUP, "clusters": [5, 6, 8]}] and remote["checked"]
+
+    # Unbinding everything drops the group.
+    await ws(8, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, unbind=True)
+    (group,) = (await ws(9, type="zha_scenes/groups"))["result"]["groups"]
+    assert group["remotes"] == []
+
+    # An area set on ZHA's group entity wins over the members' areas.
+    entities = er.async_get(hass)
+    ent = entities.async_get_or_create("light", "zha", f"light_zha_group_0x{GROUP:04x}", config_entry=zha_entry)
+    entities.async_update_entity(ent.entity_id, area_id=hall.id)
+    (group,) = (await ws(10, type="zha_scenes/groups"))["result"]["groups"]
+    assert group["areas"] == ["Hall"]

@@ -54,3 +54,16 @@ def test_group_bindings():
         {"endpoint": 1, "cluster": 6, "group_id": 5},
         {"endpoint": 1, "cluster": 8, "group_id": 5},
     ]
+
+def test_bindings_by_group():
+    bindings = [{"endpoint": 1, "cluster": 8, "group_id": 5}, {"endpoint": 1, "cluster": 6, "group_id": 5},
+                {"endpoint": 1, "cluster": 6, "group_id": 7}]
+    assert L.bindings_by_group(bindings) == {"5": [6, 8], "7": [6]}
+
+def test_apply_bind_results():
+    known = {"7": [6]}
+    after = L.apply_bind_results(known, 5, {6: "ok", 8: "ok", 5: "no answer"}, unbind=False)
+    assert after == {"7": [6], "5": [6, 8]} and known == {"7": [6]}
+    after = L.apply_bind_results(after, 5, {6: "ok", 8: "no answer"}, unbind=True)
+    assert after == {"7": [6], "5": [8]}
+    assert L.apply_bind_results(after, 5, {8: "ok"}, unbind=True) == {"7": [6]}

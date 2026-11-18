@@ -16,10 +16,12 @@ class SceneStore:
         self.hass = hass
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.groups: dict[str, dict[str, dict[str, Any]]] = {}
+        self.remotes: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
         self.groups = data.get("groups", {})
+        self.remotes = data.get("remotes", {})
 
     def scenes(self, group_id: int) -> dict[str, dict[str, Any]]:
         return self.groups.get(str(group_id), {})
@@ -52,6 +54,19 @@ class SceneStore:
             self.groups.pop(str(group_id), None)
         await self._async_save()
 
+    def remote_groups(self, ieee: str) -> dict[str, list[int]]:
+        return self.remotes.get(ieee, {}).get("groups", {})
+
+    async def async_set_remote(
+        self, ieee: str, groups: dict[str, list[int]], *, checked: str | None = None
+    ) -> None:
+        """Remember a remote's group bindings; checked is set when the table was read."""
+        entry = self.remotes.setdefault(ieee, {"groups": {}, "checked": None})
+        entry["groups"] = groups
+        if checked:
+            entry["checked"] = checked
+        await self._async_save()
+
     async def _async_save(self) -> None:
-        await self._store.async_save({"groups": self.groups})
+        await self._store.async_save({"groups": self.groups, "remotes": self.remotes})
         async_dispatcher_send(self.hass, SIGNAL_SCENES)

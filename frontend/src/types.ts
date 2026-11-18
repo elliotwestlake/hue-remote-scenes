@@ -8,6 +8,7 @@ export interface Hass {
 
 export interface Member {
   key: string; // "<ieee>/<endpoint>"
+  ieee: string;
   name: string;
   scenes: boolean; // false: the device can't store scenes (e.g. a plug)
 }
@@ -21,8 +22,10 @@ export interface Scene {
 export interface Group {
   id: number;
   name: string;
+  areas: string[]; // the group entity's area, else its lights' areas
   members: Member[];
   scenes: Scene[];
+  remotes: { ieee: string; name: string; clusters: number[] }[]; // remembered bindings
 }
 
 export interface Remote {
@@ -31,7 +34,10 @@ export interface Remote {
   model: string | null;
   manufacturer: string | null;
   battery: boolean;
+  area: string | null;
   endpoints: { id: number; clusters: number[] }[];
+  bound: { group_id: number; clusters: number[] }[]; // remembered, see `checked`
+  checked: string | null; // when the binding table was last read from the remote
 }
 
 export interface Binding {

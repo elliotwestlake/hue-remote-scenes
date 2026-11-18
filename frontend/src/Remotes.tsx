@@ -44,7 +44,11 @@ export function Remotes({ getHass, groups }: Props) {
 function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: Remote; groups: Group[] }) {
   const [endpoint, setEndpoint] = useState(remote.endpoints[0].id);
   const [groupId, setGroupId] = useState(groups[0].id);
-  const [bindings, setBindings] = useState<Binding[] | null>(null);
+  // Start from what we remember; reading the table (remote awake) replaces it.
+  const [bindings, setBindings] = useState<Binding[]>(() =>
+    remote.bound.flatMap((b) => b.clusters.map((cluster) => ({ endpoint: 0, cluster, group_id: b.group_id }))),
+  );
+  const [checked, setChecked] = useState<string | null>(remote.checked);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
 
@@ -54,6 +58,7 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
   const readBindings = async () => {
     const r = await getHass().callWS<{ bindings: Binding[] }>({ type: "zha_scenes/bindings", ieee: remote.ieee });
     setBindings(r.bindings);
+    setChecked(new Date().toISOString());
   };
 
   const act = async (fn: () => Promise<string | void>) => {
@@ -95,7 +100,7 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
 
   // Bound groups, with the clusters bound to each.
   const bound = new Map<number, number[]>();
-  for (const b of bindings ?? []) bound.set(b.group_id, [...(bound.get(b.group_id) ?? []), b.cluster]);
+  for (const b of bindings) bound.set(b.group_id, [...(bound.get(b.group_id) ?? []), b.cluster]);
 
   return (
     <section className="card">
@@ -107,7 +112,7 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
           <div>
             <h2>{remote.name}</h2>
             <div className="muted small">
-              {[remote.manufacturer, remote.model].filter(Boolean).join(" ")}
+              {[remote.area, [remote.manufacturer, remote.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ")}
               {remote.battery && " · battery"}
             </div>
           </div>
@@ -117,19 +122,20 @@ function RemoteCard({ getHass, remote, groups }: { getHass: () => Hass; remote: 
         </button>
       </div>
 
-      {bindings && (
-        <div className="chips">
-          {bound.size ? (
-            [...bound].map(([gid, clusters]) => (
-              <span key={gid} className="chip on" title={clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}>
-                <Icon name="link-variant" /> {groupName(gid)}
-              </span>
-            ))
-          ) : (
-            <span className="muted">Not bound to any group.</span>
-          )}
-        </div>
-      )}
+      <div className="chips">
+        {bound.size ? (
+          [...bound].map(([gid, clusters]) => (
+            <span key={gid} className="chip on" title={clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}>
+              <Icon name="link-variant" /> {groupName(gid)}
+            </span>
+          ))
+        ) : (
+          <span className="muted small">No group bindings known.</span>
+        )}
+        <span className="muted small">
+          {checked ? `Checked ${new Date(checked).toLocaleString()}` : "Not checked on the remote yet"}
+        </span>
+      </div>
 
       <div className="inline-row">
         {remote.endpoints.length > 1 && (
