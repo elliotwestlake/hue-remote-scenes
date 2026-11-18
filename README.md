@@ -13,9 +13,22 @@ Looking for Hue's preset and animated (dynamic) scenes on ZHA? See [ZHA Scenes b
 
 > ⚠️ Early and experimental. Tested against simulated devices only so far. Please report what works with your lights and remotes.
 
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/scenes-dark.png">
+    <img src="docs/scenes.png" alt="Scenes tab: a group card with the Hue Tap Dial's four button scenes, other scenes, and a scene saved on 2 of 3 lights" width="49%">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/remotes-dark.png">
+    <img src="docs/remotes.png" alt="Remotes tab: a Tap Dial set up and bound, a second dial ready to find its group, and a dimmer bound to the kitchen" width="49%">
+  </picture>
+</p>
+
 ## Install
 
-**Marketplace** (HA 2026.11+, formerly HACS): **Settings → Marketplace** → ⋮ → Custom repositories → add this repo as an *Integration* → install → restart HA. On older HA, use the same steps in HACS.
+[![Open your Home Assistant instance and open this repository in the Marketplace.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=elliotwestlake&repository=hue-remote-scenes&category=integration)
+
+**Marketplace** (HA 2026.11+, formerly HACS): use the button above, or **Settings → Marketplace** → ⋮ → Custom repositories → add this repo as an *Integration*. Install, then restart HA. On older HA, both work the same way in HACS.
 
 **Manual:** copy `custom_components/hue_remote_scenes` into your HA `config/custom_components/`, then restart.
 
