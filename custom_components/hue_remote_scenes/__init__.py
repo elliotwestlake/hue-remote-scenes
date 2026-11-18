@@ -23,6 +23,7 @@ BUNDLE = "hue-remote-scenes-panel.js"
 PLATFORMS = [Platform.SCENE]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+ZHA_EVENT = "zha_event"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -42,7 +43,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ScenesConfigEntry) -> bo
 
     store = SceneStore(hass)
     await store.async_load()
-    entry.runtime_data = SceneManager(hass, store)
+    manager = entry.runtime_data = SceneManager(hass, store)
+    # Remote button presses (Hue's 0xFC00 cluster) arrive as zha_event; remotes with a
+    # scene cycle recall their next scene.
+    entry.async_on_unload(hass.bus.async_listen(ZHA_EVENT, manager.async_handle_zha_event))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     if PANEL_URL not in hass.data.get(frontend.DATA_PANELS, {}):

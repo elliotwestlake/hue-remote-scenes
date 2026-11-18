@@ -27,7 +27,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
   const [icons, setIcons] = useState<AreaIcons>({});
   const [tab, setTab] = useState<Tab>("areas");
   const [openArea, setOpenArea] = useState<string | null>(null);
-  const [setup, setSetup] = useState<string | null>(null); // ieee of the dial being set up
+  const [setup, setSetup] = useState<string | null>(null); // ieee of the remote whose scene buttons are being set up
   const [error, setError] = useState("");
 
   const reload = useCallback(() => {

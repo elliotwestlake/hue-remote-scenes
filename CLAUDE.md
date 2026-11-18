@@ -12,12 +12,12 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
   - `store.py`: scene names and member lists, plus each remote's remembered group bindings, in HA storage (`.storage/hue_remote_scenes`). Fires `SIGNAL_SCENES` on change. On first start with no store of its own, it imports the pre-rename `.storage/zha_scenes` (`LEGACY_STORAGE_KEY`).
   - `areas.py`: HA areas (and `area_icons`, sent with groups and remotes). A group's area is the area set on ZHA's group entity (`light_zha_group_0x<id>`, platform `zha`, owned by the coordinator), otherwise its members' device areas. Devices are looked up by identifier `("zha", str(ieee))`.
   - `scene.py`: one `scene` entity per stored scene, added and removed as the store changes. Unique id `<group>_<scene>`.
-  - `websocket.py`: `hue_remote_scenes/groups|subscribe|store|recall|rename|delete|import|remotes|bindings|bind`.
+  - `websocket.py`: `hue_remote_scenes/groups|subscribe|store|recall|rename|delete|import|remotes|bindings|bind|find_dial_group|lights|create_group|set_cycle`.
   - `services.py`: `store_scene`, `import_scenes` (both return a response). Recall is `scene.turn_on`.
   - `logic.py`: pure helpers (no HA or zigpy imports), unit-tested in `tests/`.
   - `frontend/hue-remote-scenes-panel.js`: **built artifact**. Don't edit it. Run `npm run build` in `/frontend`.
 - `frontend/src/`: React 18 panel (shell from hive-local: `main.tsx`, `Icon.tsx`). Two tabs: **Areas** (`Overview.tsx` tiles → `AreaView.tsx` with a `GroupSection.tsx` per group and the area's remotes) and **All remotes** (`RemotesTab.tsx`). `RemoteCard.tsx` is shared by both; `DialSetup.tsx` is the 4-step Tap Dial dialog; `SceneCard.tsx` has the swatch, scene card and new-scene card. `model.ts` holds pure helpers (areas, remote status, dial progress, swatch colours, friendly model names). `main.tsx` re-renders at most once a second on `hass` changes for live on/off and battery. `Logo.tsx` is the brand mark.
-- `entities.py`: HA entities of ZHA devices: a member's light entity, a remote's battery sensor, and `scene_colors` (the members' `rgb_color` + brightness when a scene is saved, stored as the scene's `colors` for the panel's swatches; None = off). `Scenes.tsx` (a card per group) and `Remotes.tsx`.
+- `entities.py`: HA entities of ZHA devices: a member's light entity, a remote's battery sensor, and `scene_colors` (the members' `rgb_color` + brightness when a scene is saved, stored as the scene's `colors` for the panel's swatches; None = off).
 - `docs/`: README screenshots (light and dark), rendered from the built panel bundle with mock data in headless Chromium, framed on a brand-gradient background.
 - `tests_ha/`: end-to-end tests with `pytest-homeassistant-custom-component` (HA 2026.2.3, zha 0.0.90). Real zigpy `Device`s and a zigpy `Groups`, a fake radio that decodes every frame and answers like real bulbs/remotes, and a fake ZHA gateway. Not run in CI (CI only installs `pytest`).
 
@@ -34,7 +34,12 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
   - `zigbee.async_find_dial_group` binds the dial's Scenes **out** cluster to the coordinator (ZDO Bind_req, addrmode 3, coordinator endpoint 1), retrying every `BIND_RETRY` s while it sleeps, then waits for a recall (`cluster_command` 0x05 on that out cluster) and reads `group_id`. The coordinator binding is left in place (harmless).
   - `zigbee.async_create_group` uses ZHA's `gateway.async_create_zigpy_group(name, members, group_id)` (needs a unique name) or `group.async_add_members`.
   - The store keeps `remotes[ieee]["dial"] = {group_id, buttons}`. `SceneManager.async_store(scene_id=…, name=…)` creates a scene at a fixed id, and new scenes in a dial's group skip the button ids.
-  - Panel: "Scene buttons" steps on the remote card (find → create group → bind), and button slots on the group card. The Remotes tab works with no groups (Elliot re-paired everything).
+  - Panel: the set-up dialog (`DialSetup.tsx`: find → choose lights → bind → save button scenes), and button cards in the group's section of its area. The All remotes tab works with no groups (Elliot re-paired everything).
+- **Hue dimmer switches** (researched Nov 2026, nothing confirmed on hardware yet):
+  - **RWL022 (gen 2):** one endpoint, out clusters `[0x19, 0, 3, 4, 6, 8, 5, 0x1000]` (zhaquirks `rwl022.py` signature). Z2M docs (929002398602): when bound, power alternates On/OffWithEffect, up/down send Step, and the **Hue button sends RecallScene on a fixed per-remote group, alternating scenes 0 and 1** (Z2M exposes `recall_0`/`recall_1`; zha-device-handlers#4747 logs a Recall group 0x2A2A scene 0). So it reuses the dial flow: `DIAL_BUTTONS["RWL022"] = Hue button A (0), B (1)`. Which comes first is unverified. The Z2M page's own text says "scenes 1 and 2" in one place and "0 and 1" in another; we go with 0/1.
+  - **RWL020/RWL021 (gen 1):** endpoint 1 is ZLL profile, out `[0, 3, 4, 6, 8]` on old firmware and `+5` (Scenes) on newer; endpoint 2 has `0xFC00` (zhaquirks `rwlfirstgen.py`). Z2M docs: bound, On sends On, Off sends OffWithEffect, up/down Step/Stop. No scene recall documented. So: buttons stay bound to the group, and **HA cycles scenes** (`logic.CYCLE_TRIGGERS`): `zha_event` with `command` `on_press` → `SceneManager.async_cycle` groupcasts the next scene in `remotes[ieee]["cycle"] = {group_id, scene_ids}`. Restarts from the first after `CYCLE_RESET` s. Position is runtime-only.
+  - **ROM001 / RDM003 (smart button):** same descriptor as RWL022, but Z2M documents only on/off (alternating) and step; no recall. Cycle trigger is `on_double_press` because a single press toggles.
+  - Hue remote presses reach HA as `zha_event` from the `0xFC00` quirk cluster (`PhilipsRemoteCluster`: commands `<button>_press`, `_short_release`, `_double_press`, `_hold`, `_long_release`; buttons `on`/`up`/`down`/`off`). `_press` comes ~300 ms after release (multi-press detection). ZHA binds `0xFC00` to the coordinator; HA 2026.2.0/2026.2.1 didn't (zha-device-handlers#4747, fixed in zha 0.0.90 / HA 2026.2.2; reconfigure affected remotes).
 - Remote detection: a non-ZDO endpoint with on/off, level or scenes **client** (out) clusters and no on/off server cluster.
 - **ZHA hands out zigpy `t.Group` ids**, an int that `str()`s as `"0x0005"` but goes over JSON as `5`. Always `int()` them: `zigbee.groups()` does, and `store._key()` uses `str(int(id))`. Mixing the two hid every saved scene from the panel. The e2e fake uses real `t.Group` ids to catch this.
 - Scene ids are allocated from 1 (0 is often a remote's default). Names are ours; the lights only store ids.
@@ -42,10 +47,14 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
 
 ## Status
 
-- [x] Backend, scene entities, actions, panel. 12 pure tests, 9 end-to-end tests pass.
+- [x] Backend, scene entities, actions, panel. 15 pure tests, 12 end-to-end tests pass.
+- [x] Hue dimmers: RWL022 Hue button via the dial flow; RWL020/021 and ROM001 scene cycle via HA (`hue_remote_scenes/set_cycle`, `remotes[].cycle_trigger`/`cycle`, `groups[].cycles`). "Scene cycle" section on the remote card (`CycleSection.tsx`).
+- [ ] RWL022 on real hardware: find its group with the Hue button, create, bind, save A/B, press the Hue button repeatedly. Check the order of scenes 0/1, and whether the power button toggles properly when bound to a group.
+- [ ] RWL021 on real hardware: check its `zha_event` commands (`on_press`), that binding on/off/level to the group still lets the `0xFC00` events reach HA, and the On → cycle behaviour. Check whether newer gen 1 firmware (with a Scenes out cluster) sends recalls itself.
+- [ ] ROM001 on real hardware: double press → next scene. Check whether it sends Scenes recalls on its own (it has a Scenes out cluster).
 - [ ] On real hardware: store and recall a scene on a group of Hue bulbs, then press the bound Tap Dial.
 - [ ] Tap Dial scene buttons on real hardware: find group → create → bind → save the four slots → press each button.
-- [ ] Bind a Tap Dial to a group from the Remotes tab; check the binding table read. Check what the dial's buttons and rotation do once bound.
+- [ ] Bind a Tap Dial to a group from the All remotes tab; check the binding table read. Check what the dial's buttons and rotation do once bound.
 - [ ] After migrating from Z2M: **Import from lights** on groups recreated with the same ids.
 - [x] Brand images in `brand/`: `icon`, `logo` and `dark_logo` (each with `@2x`). A colour-wheel dial ring around a gradient bulb, plus the name in Nunito, drawn as HTML/SVG and screenshotted in headless Chromium. The README header uses the logos. No Philips Hue logo (Signify's trademark) and repo topics, for the Marketplace checks.
 - [ ] If ZHA reloads, the gateway object changes. We look it up on every call, so this should be fine, but it's untested.

@@ -10,6 +10,14 @@ const MODEL_NAMES: Record<string, string> = {
   ROM001: "Hue Smart button",
 };
 
+export const isTapDial = (r: Remote) => r.model === "RDM002";
+
+/** What pressing finds a remote's built-in group, and what its other buttons do once bound. */
+export const sceneButtons = (r: Remote) =>
+  isTapDial(r)
+    ? { press: "one of the dial's four buttons", rest: "Turn to dim · hold a button for off" }
+    : { press: "the Hue button", rest: "Power button turns on/off · up/down dim" };
+
 /** "Hue Tap Dial" for models we know, else "<manufacturer> <model>". */
 export const modelName = (r: Remote) =>
   (r.model && MODEL_NAMES[r.model]) || [r.manufacturer, r.model].filter(Boolean).join(" ");

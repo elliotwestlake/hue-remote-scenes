@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
-import { dialProgress, isOn, NO_AREA } from "./model";
+import { dialProgress, isOn, NO_AREA, sceneButtons } from "./model";
+import { remoteIcon } from "./RemoteCard";
 import { NewSceneCard, SceneCard } from "./SceneCard";
 import { dots, hex, plural, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
 import { useAction } from "./useAction";
@@ -16,13 +17,14 @@ interface Props {
 const STEPS = [
   { title: "Find its group", hint: "Press a scene button" },
   { title: "Choose lights", hint: "Creates the group in ZHA" },
-  { title: "Bind", hint: "Press a dial button first" },
+  { title: "Bind", hint: "Press a button first" },
   { title: "Save button scenes", hint: "One per button" },
 ];
 
 /**
- * Hue Tap Dial: its buttons recall scenes 1, 0, 5 and 4 on its own built-in group, straight
- * from the lights. Find that group, create it in ZHA with the lights, bind, then save a scene per button.
+ * Remotes whose buttons recall fixed scenes on their own built-in group, straight from the lights
+ * (Hue Tap Dial: 1, 0, 5, 4; gen 2 Hue dimmer's Hue button: 0, 1). Find that group, create it in
+ * ZHA with the lights, bind, then save a scene per button.
  */
 export function DialSetup({ getHass, remote, groups, onChanged, onClose }: Props) {
   const { busy, result, act, clear } = useAction();
@@ -45,7 +47,7 @@ export function DialSetup({ getHass, remote, groups, onChanged, onClose }: Props
     <div className="dialog-scrim" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={`Set up ${remote.name}`}>
         <div className="dialog-head">
-          <span className="ricon"><ha-icon icon="mdi:knob" /></span>
+          <span className="ricon"><ha-icon icon={remoteIcon(remote)} /></span>
           <div className="grow">
             <h2>Set up {remote.name}</h2>
             <div className="muted small">Scene buttons that work even when Home Assistant is down</div>
@@ -117,13 +119,13 @@ function FindStep({ getHass, remote, busy, act, onChanged }: StepProps) {
       const r = await getHass().callWS<{ group_id: number; exists: boolean }>({ type: "hue_remote_scenes/find_dial_group", ieee: remote.ieee });
       onChanged();
       return `Its scene buttons use group ${hex(r.group_id)}${r.exists ? ", which ZHA already has" : ""}.`;
-    }, "Press one of the dial's scene buttons now, then again every few seconds until this finishes…");
+    }, `Press ${sceneButtons(remote).press} now, then again every few seconds until this finishes…`);
   return (
     <div className="step-body">
-      <h3 className="title">Find the dial's group</h3>
+      <h3 className="title">Find the remote's group</h3>
       <p className="muted">
-        Each Tap Dial recalls its scenes on its own built-in group. Press <strong>Find its group</strong>, then press one of
-        the dial's four buttons a few times so it wakes up and shows which group it uses.
+        This remote recalls its scenes on its own built-in group. Press <strong>Find its group</strong>, then press{" "}
+        {sceneButtons(remote).press} a few times so it wakes up and shows which group it uses.
       </p>
       <div>
         <button className="primary" disabled={busy} onClick={find}><Icon name="magnify" /> {remote.dial ? "Find again" : "Find its group"}</button>
@@ -158,10 +160,10 @@ function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
       await getHass().callWS({ type: "hue_remote_scenes/create_group", group_id: remote.dial!.group_id, name: group?.name ?? name, members: [...picked] });
       setPicked(new Set());
       onChanged();
-      return group ? `Added ${plural(picked.size, "light")} to ${group.name}.` : `Created ${name}. Next, bind the dial to it.`;
+      return group ? `Added ${plural(picked.size, "light")} to ${group.name}.` : `Created ${name}. Next, bind the remote to it.`;
     }, "Adding the lights to the group…");
 
-  // By area, the dial's own area first.
+  // By area, the remote's own area first.
   const byArea = new Map<string, Light[]>();
   for (const l of lights ?? []) {
     const a = l.area ?? NO_AREA;
@@ -173,11 +175,11 @@ function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
 
   return (
     <div className="step-body">
-      <h3 className="title">{group ? `Lights in ${group.name}` : "Which lights should the dial control?"}</h3>
+      <h3 className="title">{group ? `Lights in ${group.name}` : "Which lights should it control?"}</h3>
       <p className="muted">
         {group
-          ? `${plural(group.members.length, "light")} are in the dial's group. Tick more to add them.`
-          : "They'll go in a new ZHA group with the dial's ID. Only lights that can store scenes are listed."}
+          ? `${plural(group.members.length, "light")} are in the remote's group. Tick more to add them.`
+          : "They'll go in a new ZHA group with the remote's ID. Only lights that can store scenes are listed."}
       </p>
       {!lights && <p className="muted">Loading lights…</p>}
       {lights && !lights.length && <p className="muted">No lights that can store scenes found.</p>}
@@ -229,15 +231,15 @@ function BindStep({ getHass, remote, group, bound, busy, act, onChanged }: StepP
       });
       onChanged();
       const failed = Object.entries(r.results).filter(([, v]) => v !== "ok");
-      if (failed.length === Object.keys(r.results).length) return "The dial didn't answer. Press one of its buttons and try again.";
+      if (failed.length === Object.keys(r.results).length) return "The remote didn't answer. Press one of its buttons and try again.";
       if (failed.length) return `Bound, but some parts didn't take (${failed.map(([c, v]) => `${c}: ${v}`).join(", ")}). Try again.`;
       return `Bound to ${group.name}.`;
-    }, "Waiting for the dial… press one of its buttons.");
+    }, "Waiting for the remote… press one of its buttons.");
   return (
     <div className="step-body">
-      <h3 className="title">Bind the dial to {group.name}</h3>
+      <h3 className="title">Bind {remote.name} to {group.name}</h3>
       <p className="muted">
-        Binding makes the dial talk to the lights directly over Zigbee. The dial is asleep most of the time:{" "}
+        Binding makes the remote talk to the lights directly over Zigbee. It's asleep most of the time:{" "}
         <strong>press one of its buttons</strong>, then press Bind.
       </p>
       <div className="row-start">

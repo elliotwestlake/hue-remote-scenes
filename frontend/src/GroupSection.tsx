@@ -112,7 +112,9 @@ export function GroupSection({ getHass, group, onChanged }: Props) {
                   );
                 })}
               </div>
-              <p className="muted small tight">Hold any button to turn the lights off. Turn the dial to dim.</p>
+              {buttons.some((b) => /^\d/.test(b.label)) && (
+                <p className="muted small tight">Hold any button to turn the lights off. Turn the dial to dim.</p>
+              )}
               <p className="label">Other scenes</p>
             </>
           )}

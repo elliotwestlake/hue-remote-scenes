@@ -25,6 +25,7 @@ export const styles = /* css */ `
 .muted { color: var(--secondary-text-color); }
 .small { font-size: 12px; }
 .tight { margin: -6px 0 0; }
+.tight0 { margin: 0; }
 strong { font-weight: 500; }
 h2 { font-size: 18px; font-weight: 500; margin: 0; }
 h3.title { font-size: 17px; font-weight: 500; margin: 0; }
@@ -152,7 +153,9 @@ select, input[type=text] { font: inherit; font-size: 14px; padding: 9px 11px; bo
 /* Remotes */
 .ctl { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--hrs-soft); --mdc-icon-size: 16px; }
 .foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; border-top: 1px solid var(--divider-color); padding-top: 12px; }
-.foot > .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 90px; }
+.foot > .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.foot button { padding: 6px 8px; white-space: nowrap; }
+.foot button.primary { padding: 7px 12px; }
 .bind-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .progress-block { display: flex; flex-direction: column; gap: 8px; }
 .prog { height: 6px; border-radius: 999px; background: var(--hrs-soft-2); overflow: hidden; }

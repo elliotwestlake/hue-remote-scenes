@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+from time import monotonic
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
 from . import zigbee
@@ -12,7 +14,10 @@ from .const import SCENE_NAME_MAX
 from .entities import scene_colors
 from .logic import (
     SceneError,
+    clean_cycle,
     clean_name,
+    cycle_next,
+    cycle_trigger,
     import_scenes,
     merge_membership,
     next_scene_id,
@@ -20,11 +25,15 @@ from .logic import (
 )
 from .store import SceneStore
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class SceneManager:
     def __init__(self, hass: HomeAssistant, store: SceneStore) -> None:
         self.hass = hass
         self.store = store
+        # ieee -> (index of the scene last recalled, monotonic time of that press).
+        self._cycle_pos: dict[str, tuple[int, float]] = {}
 
     def _require(self, group_id: int, scene_id: int) -> dict[str, Any]:
         scene = self.store.scene(group_id, scene_id)
@@ -95,3 +104,54 @@ class SceneManager:
             "found": sorted(found),
             "no_answer": sorted(m for m, r in replies.items() if r is None),
         }
+
+    # --- Scene cycling: HA recalls the next scene when a remote's button is pressed ---
+
+    async def async_set_cycle(
+        self, ieee: str, group_id: int | None, scene_ids: list[int] | None = None
+    ) -> dict[str, Any] | None:
+        """Make this remote's trigger press cycle through scene_ids in group_id (None: stop)."""
+        if group_id is None:
+            await self.store.async_set_cycle(ieee, None)
+            self._cycle_pos.pop(ieee, None)
+            return None
+        if cycle_trigger(zigbee.device_model(self.hass, ieee)) is None:
+            raise SceneError("This remote's button presses can't cycle scenes")
+        if zigbee.group_name(self.hass, group_id) is None:
+            raise SceneError(f"ZHA has no group {group_id}")
+        ids = clean_cycle(scene_ids, {int(s) for s in self.store.scenes(group_id)})
+        await self.store.async_set_cycle(ieee, group_id, ids)
+        self._cycle_pos.pop(ieee, None)
+        return self.store.cycle(ieee)
+
+    @callback
+    def async_handle_zha_event(self, event: Event) -> None:
+        """zha_event listener: a remote with a cycle sent its trigger press."""
+        ieee = str(event.data.get("device_ieee"))
+        if self.store.cycle(ieee) is None:
+            return
+        trigger = cycle_trigger(zigbee.device_model(self.hass, ieee))
+        if trigger is None or event.data.get("command") != trigger[0]:
+            return
+        self.hass.async_create_task(self.async_cycle(ieee), f"hue_remote_scenes cycle {ieee}")
+
+    async def async_cycle(self, ieee: str) -> int | None:
+        """Recall the remote's next scene (the first, after a pause). Returns its id."""
+        cycle = self.store.cycle(ieee)
+        if cycle is None:
+            return None
+        group_id = cycle["group_id"]
+        # Scenes deleted since the cycle was set are skipped.
+        scene_ids = [s for s in cycle["scene_ids"] if self.store.scene(group_id, s) is not None]
+        if not scene_ids:
+            return None
+        now = monotonic()
+        last_index, last_press = self._cycle_pos.get(ieee, (None, None))
+        index = cycle_next(len(scene_ids), last_index, last_press, now)
+        self._cycle_pos[ieee] = (index, now)
+        try:
+            await zigbee.async_recall(self.hass, group_id, scene_ids[index])
+        except HomeAssistantError as err:
+            _LOGGER.warning("Couldn't recall scene %s for remote %s: %s", scene_ids[index], ieee, err)
+            return None
+        return scene_ids[index]

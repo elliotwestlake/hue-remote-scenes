@@ -8,6 +8,7 @@
 Make your Philips Hue remotes recall scenes stored in your lamps, on Home Assistant's **ZHA**, without a Hue Bridge. Press a button and the lamps change straight away over Zigbee, even when Home Assistant is down.
 
 - **Hue Tap Dial set-up.** Each button recalls its own scene, the dial dims, and holding a button turns the lights off. A guided set-up finds the dial's built-in group, creates it in ZHA with the lamps you pick, and binds the dial. Then you save a scene for each button.
+- **Hue dimmer switches.** On the gen 2 dimmer (RWL022), the Hue button alternates between two scenes stored in the lamps, set up the same way as the Tap Dial. Gen 1 dimmers (RWL020/RWL021) and the Hue smart button (ROM001) can't recall scenes themselves, so Home Assistant cycles through a list of scenes when you press On (or double-press the smart button). That part **needs Home Assistant running**; on/off and dimming still work without it.
 - **Scenes stored in the lamps.** Set a ZHA group's lamps how you want them, then save. Every lamp stores its own state. Each scene also becomes a `scene.` entity for dashboards and automations.
 - **Import.** Scenes already stored in your lamps (for example, ones made in Zigbee2MQTT before moving to ZHA) can be read back, then named.
 - **Remote → group binding.** Bind remotes to ZHA groups, and see what each remote is bound to.
@@ -99,6 +100,18 @@ Once a Hue Tap Dial is set up, its four buttons recall scenes **stored in the li
 4. **Save button scenes:** there's a slot per button (● to ●●●●). Set the lights, then **Save current state** in each slot. Later you can change them from the area, where they're shown as the dial's buttons.
 
 The buttons recall scenes 1, 0, 5 and 4 (the IDs come from [Zigbee2MQTT's Tap Dial docs](https://www.zigbee2mqtt.io/devices/8719514440937_8719514440999.html)). Other scenes you save in that group skip those IDs.
+
+## Hue dimmer switches
+
+**Gen 2 dimmer (RWL022): the Hue button, without Home Assistant.** According to [Zigbee2MQTT's docs for it](https://www.zigbee2mqtt.io/devices/929002398602.html), the Hue button recalls scene 0 or 1 on the dimmer's own built-in group, alternating on each press. Set it up exactly like the Tap Dial above (find its group with the Hue button, create the group, bind), then save the two slots, *Hue button A* (scene 0) and *Hue button B* (scene 1). The power button turns the group on and off and the dim buttons dim it, all directly over Zigbee. Not yet confirmed on real hardware.
+
+**Gen 1 dimmer (RWL020/RWL021) and Hue smart button (ROM001): scene cycle, needs Home Assistant.** These only send on/off and dimming when bound, so they can't recall scenes stored in the lamps by themselves. Instead:
+
+1. Bind the remote to the group as usual, so on/off and dimming work directly, even when Home Assistant is down.
+2. On the remote's card under **All remotes**, press **Choose scenes** under *Scene cycle*, pick the group and tap its scenes in the order you want.
+3. Each **On** press (a **double press** on the smart button, whose single press toggles on/off) makes Home Assistant recall the next scene in the list, to the whole group at once. After a pause of more than 10 seconds it starts from the first scene again.
+
+The button presses reach Home Assistant through ZHA's Hue remote events (`zha_event`), so the remote must be set up in ZHA with its Hue events working. If ZHA shows only generic *On*/*Step* events for it, reconfigure it in ZHA.
 
 ## Moving from Zigbee2MQTT
 

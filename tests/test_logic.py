@@ -75,7 +75,32 @@ def test_next_scene_id_skips_dial_buttons():
 def test_dial_buttons():
     assert [sid for _, sid in L.dial_buttons("RDM002")] == [1, 0, 5, 4]
     assert L.dial_buttons("rdm002") is not None
-    assert L.dial_buttons("RWL022") is None and L.dial_buttons(None) is None
+    # Gen 2 dimmer: the Hue button alternates between scenes 0 and 1 on its own group.
+    assert sorted(sid for _, sid in L.dial_buttons("RWL022")) == [0, 1]
+    assert L.dial_buttons("RWL021") is None and L.dial_buttons(None) is None
+
+def test_cycle_trigger():
+    assert L.cycle_trigger("RWL021")[0] == "on_press" and L.cycle_trigger("rwl020")[0] == "on_press"
+    assert L.cycle_trigger("ROM001")[0] == "on_double_press"  # a single press toggles on/off
+    # Gen 2 dimmers and Tap Dials recall scenes themselves; no HA cycle.
+    assert L.cycle_trigger("RWL022") is None and L.cycle_trigger("RDM002") is None
+    assert L.cycle_trigger(None) is None
+
+def test_clean_cycle():
+    assert L.clean_cycle([3, 1, 3, "2"], {1, 2, 3}) == [3, 1, 2]  # order kept, repeats dropped
+    for bad in ([], None, [9]):
+        with pytest.raises(L.SceneError):
+            L.clean_cycle(bad, {1, 2, 3})
+    with pytest.raises(L.SceneError):
+        L.clean_cycle(list(range(L.CYCLE_MAX + 1)), set(range(50)))
+
+def test_cycle_next():
+    assert L.cycle_next(3, None, None, 100.0) == 0  # first press
+    assert L.cycle_next(3, 0, 100.0, 102.0) == 1
+    assert L.cycle_next(3, 2, 100.0, 102.0) == 0  # wraps
+    assert L.cycle_next(3, 1, 100.0, 100.0 + L.CYCLE_RESET + 1) == 0  # after a pause: first again
+    with pytest.raises(L.SceneError):
+        L.cycle_next(0, None, None, 0.0)
 
 def test_parse_member_key():
     assert L.parse_member_key("00:17:88:01:00:00:00:01/11") == ("00:17:88:01:00:00:00:01", 11)

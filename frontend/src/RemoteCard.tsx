@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { ago, dialProgress, modelName, remoteStatus } from "./model";
+import { ago, dialProgress, isTapDial, modelName, remoteStatus, sceneButtons } from "./model";
+import { CycleSection } from "./CycleSection";
 import { Swatch } from "./SceneCard";
 import { CLUSTER_LABEL, dots, hex, type Binding, type Group, type Hass, type Remote } from "./types";
 import { useAction } from "./useAction";
@@ -17,7 +18,7 @@ interface Props {
 const STEP_NAMES = ["Find its group", "Choose lights", "Bind", "Save button scenes"];
 
 export const remoteIcon = (r: Remote) =>
-  r.dial_supported ? "mdi:knob" : r.endpoints.some((e) => e.clusters.includes(8)) ? "mdi:remote" : "mdi:gesture-tap-button";
+  isTapDial(r) ? "mdi:knob" : r.endpoints.some((e) => e.clusters.includes(8)) ? "mdi:remote" : "mdi:gesture-tap-button";
 
 export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChanged }: Props) {
   const { busy, result, act } = useAction();
@@ -106,8 +107,8 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
             })}
           </div>
           <div className="ctl small">
-            <Icon name="rotate-right" />
-            <span className="grow">Turn to dim · hold a button for off</span>
+            <Icon name={isTapDial(remote) ? "rotate-right" : "brightness-6"} />
+            <span className="grow">{sceneButtons(remote).rest}</span>
             <span className="muted">{dialGroup.name}</span>
           </div>
         </>
@@ -131,7 +132,11 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
         </>
       )}
 
-      {status.state === "idle" && !compact && <p className="muted small tight">Not controlling anything yet.</p>}
+      {remote.cycle_trigger && (
+        <CycleSection getHass={getHass} remote={remote} groups={groups} busy={!!busy} act={act} onChanged={onChanged} />
+      )}
+
+      {status.state === "idle" && !compact && !remote.cycle_trigger && <p className="muted small tight">Not controlling anything yet.</p>}
 
       {(binding || autoBind) && (
         <div className="bind-row">

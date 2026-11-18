@@ -8,7 +8,8 @@ Stored format (HA storage):
 
     {"groups": {"<group id>": {"<scene id>": {"name": "Relax", "members": ["<ieee>/<ep>", ...]}}},
      "remotes": {"<ieee>": {"groups": {"<group id>": [<cluster>, ...]}, "checked": "<iso time>"|None,
-                            "dial_group": <group id>|None}}}
+                            "dial": {"group_id": <id>, "buttons": [[label, scene id], ...]}?,
+                            "cycle": {"group_id": <id>, "scene_ids": [<id>, ...]}?}}}
 
 A remote's binding table lives on the remote, which is usually asleep, so we remember
 what we last bound or read ("checked" is set only when the table was actually read).
@@ -39,15 +40,70 @@ def parse_member_key(key: str) -> tuple[str, int]:
 
 
 # Remotes that recall fixed scene ids on their own built-in group once their Scenes
-# cluster is bound to it (no HA involved). Hue Tap Dial: the four buttons recall
-# scenes 1, 0, 5 and 4 (Zigbee2MQTT's RDM002 docs). (label, scene id) per button.
+# cluster is bound to it (no HA involved). (label, scene id) per button.
+# - Hue Tap Dial: the four buttons recall scenes 1, 0, 5 and 4 (Zigbee2MQTT's RDM002 docs).
+# - Hue dimmer switch gen 2: the Hue button alternates between scenes 0 and 1
+#   (Zigbee2MQTT's 929002398602 docs and its recall_0/recall_1 actions). Which of the
+#   two comes first is unverified, so the labels don't claim an order.
 DIAL_BUTTONS: dict[str, list[tuple[str, int]]] = {
     "RDM002": [("1 dot", 1), ("2 dots", 0), ("3 dots", 5), ("4 dots", 4)],
+    "RWL022": [("Hue button A", 0), ("Hue button B", 1)],
 }
+
+# Remotes whose buttons can't recall scenes themselves, but whose presses reach Home
+# Assistant as ZHA events (Hue's 0xFC00 cluster, which ZHA binds to the coordinator).
+# Home Assistant then recalls the next scene in a list: (zha_event command, label).
+# Their buttons stay bound to the group for on/off and dimming, which works without HA.
+# - Hue dimmer switch gen 1: the On button only sends On when bound, so a press turns
+#   the lights on directly and HA then recalls the next scene.
+# - Hue smart button: a press alternates On/Off, so cycling uses a double press.
+CYCLE_TRIGGERS: dict[str, tuple[str, str]] = {
+    "RWL020": ("on_press", "On button"),
+    "RWL021": ("on_press", "On button"),
+    "ROM001": ("on_double_press", "Double press"),
+    "RDM003": ("on_double_press", "Double press"),
+}
+CYCLE_MAX = 10  # scenes in one remote's cycle
+CYCLE_RESET = 10.0  # seconds: a press after a longer pause starts from the first scene
 
 
 def dial_buttons(model: str | None) -> list[tuple[str, int]] | None:
     return DIAL_BUTTONS.get((model or "").upper())
+
+
+def cycle_trigger(model: str | None) -> tuple[str, str] | None:
+    return CYCLE_TRIGGERS.get((model or "").upper())
+
+
+def clean_cycle(scene_ids: Any, stored: set[int]) -> list[int]:
+    """Validate a cycle's scenes: saved in the group, no repeats, at most CYCLE_MAX."""
+    if not isinstance(scene_ids, list) or not scene_ids:
+        raise SceneError("Pick at least one scene")
+    out: list[int] = []
+    for scene_id in scene_ids:
+        scene_id = int(scene_id)
+        if scene_id not in stored:
+            raise SceneError(f"This group has no saved scene {scene_id}")
+        if scene_id not in out:
+            out.append(scene_id)
+    if len(out) > CYCLE_MAX:
+        raise SceneError(f"A remote can cycle through at most {CYCLE_MAX} scenes")
+    return out
+
+
+def cycle_next(
+    count: int,
+    last_index: int | None,
+    last_press: float | None,
+    now: float,
+    reset: float = CYCLE_RESET,
+) -> int:
+    """Index of the scene to recall: the next one, or the first after a pause."""
+    if count <= 0:
+        raise SceneError("Nothing to cycle through")
+    if last_index is None or last_press is None or now - last_press > reset:
+        return 0
+    return (last_index + 1) % count
 
 
 def next_scene_id(used: set[int], reserved: set[int] | frozenset[int] = frozenset()) -> int:
