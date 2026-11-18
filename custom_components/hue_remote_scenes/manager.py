@@ -9,6 +9,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from . import zigbee
 from .const import SCENE_NAME_MAX
+from .entities import scene_colors
 from .logic import (
     SceneError,
     clean_name,
@@ -58,6 +59,7 @@ class SceneManager:
                 + ", ".join(f"{m} ({e})" for m, e in failed.items())
             )
         scene["members"] = ok
+        scene["colors"] = scene_colors(self.hass, ok)
         await self.store.async_set(group_id, scene_id, scene)
         return {"scene_id": scene_id, "ok": ok, "failed": failed}
 

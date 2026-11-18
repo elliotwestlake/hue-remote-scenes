@@ -1,17 +1,17 @@
 """Websocket API used by the sidebar panel.
 
-hue_remote_scenes/groups                                    -> ZHA groups: members, areas, scenes, bound remotes
+hue_remote_scenes/groups                                    -> ZHA groups: members, areas, scenes, bound remotes; area icons
 hue_remote_scenes/subscribe                                 -> pushes {} whenever stored scenes change
 hue_remote_scenes/store   {group_id, name? , scene_id?}     -> new scene (name) or re-save (scene_id)
 hue_remote_scenes/recall  {group_id, scene_id, transition?}
 hue_remote_scenes/rename  {group_id, scene_id, name}
 hue_remote_scenes/delete  {group_id, scene_id}
 hue_remote_scenes/import  {group_id}                         -> scenes the lights already have
-hue_remote_scenes/remotes                                   -> remotes, their area and remembered bindings
+hue_remote_scenes/remotes                                   -> remotes, their area, battery and remembered bindings
 hue_remote_scenes/bindings {ieee}                            -> the remote's group bindings (must be awake)
 hue_remote_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
 hue_remote_scenes/find_dial_group {ieee}                     -> the group a dial recalls scenes on (needs a button press)
-hue_remote_scenes/lights                                    -> lights that can join a group
+hue_remote_scenes/lights                                    -> lights that can join a group, with their area
 hue_remote_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
 """
 
@@ -29,8 +29,9 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dis
 from homeassistant.util import dt as dt_util
 
 from . import zigbee
-from .areas import device_area, group_areas
+from .areas import area_icons, device_area, group_areas
 from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_SCENES
+from .entities import battery_entity, light_entity
 from .logic import SceneError, apply_bind_results, bindings_by_group, dial_buttons, group_bindings
 from .manager import SceneManager
 
@@ -92,6 +93,8 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
     out = []
     for group in zigbee.groups(hass):
         group["areas"] = group_areas(hass, group["id"], [m["ieee"] for m in group["members"]])
+        for member in group["members"]:
+            member["entity_id"] = light_entity(hass, member["ieee"])
         group["remotes"] = [
             {"ieee": ieee, "name": name, "clusters": clusters}
             for ieee, name in remote_names.items()
@@ -109,13 +112,18 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
         stored = manager.store.scenes(group["id"])
         group["scenes"] = sorted(
             (
-                {"id": int(sid), "name": s["name"], "members": s.get("members", [])}
+                {
+                    "id": int(sid),
+                    "name": s["name"],
+                    "members": s.get("members", []),
+                    "colors": s.get("colors", []),
+                }
                 for sid, s in stored.items()
             ),
             key=lambda s: s["id"],
         )
         out.append(group)
-    return {"groups": out}
+    return {"groups": out, "area_icons": area_icons(hass)}
 
 
 @websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/subscribe"})
@@ -195,7 +203,8 @@ async def ws_remotes(hass, connection, msg, manager: SceneManager):
         remote["checked"] = manager.store.remotes.get(remote["ieee"], {}).get("checked")
         remote["dial_supported"] = dial_buttons(remote["model"]) is not None
         remote["dial"] = manager.store.dial(remote["ieee"])
-    return {"remotes": remotes}
+        remote["battery_entity"] = battery_entity(hass, remote["ieee"])
+    return {"remotes": remotes, "area_icons": area_icons(hass)}
 
 
 @websocket_api.websocket_command(
@@ -261,7 +270,11 @@ async def ws_find_dial_group(hass, connection, msg, manager: SceneManager):
 @websocket_api.async_response
 @_handler
 async def ws_lights(hass, connection, msg, manager: SceneManager):
-    return {"lights": zigbee.lights(hass)}
+    lights = zigbee.lights(hass)
+    for light in lights:
+        light["area"] = device_area(hass, light["ieee"])
+        light["entity_id"] = light_entity(hass, light["ieee"])
+    return {"lights": lights}
 
 
 @websocket_api.websocket_command(

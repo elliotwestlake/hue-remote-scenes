@@ -412,8 +412,9 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
     r = await ws(1, type="hue_remote_scenes/remotes")
     assert r["result"]["remotes"] == [{
         "ieee": str(app.dial.ieee), "name": "Tap dial", "model": "RDM002", "manufacturer": "Signify",
-        "battery": True, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}],
-        "area": None, "bound": [], "checked": None, "dial_supported": True, "dial": None}]
+        "battery": True, "last_seen": None, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}],
+        "area": None, "bound": [], "checked": None, "dial_supported": True, "dial": None,
+        "battery_entity": None}]
 
     r = await ws(2, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP)
     assert r["success"], r

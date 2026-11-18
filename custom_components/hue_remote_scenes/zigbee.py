@@ -200,10 +200,20 @@ def remotes(hass: HomeAssistant) -> list[dict[str, Any]]:
                     "model": device.model,
                     "manufacturer": device.manufacturer,
                     "battery": device.is_mains_powered is False,
+                    "last_seen": _timestamp(getattr(device, "last_seen", None)),
                     "endpoints": [{"id": ep, "clusters": c} for ep, c in found.items()],
                 }
             )
     return sorted(out, key=lambda r: r["name"].lower())
+
+
+def _timestamp(value: Any) -> float | None:
+    """Unix time ZHA last heard from a device; it may hand us a float or a datetime."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if hasattr(value, "timestamp"):
+        return value.timestamp()
+    return None
 
 
 def _zigpy_device(hass: HomeAssistant, ieee: str) -> Any:

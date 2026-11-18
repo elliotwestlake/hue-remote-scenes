@@ -17,6 +17,11 @@ def _area_name(hass: HomeAssistant, area_id: str | None) -> str | None:
     return area.name if area else None
 
 
+def area_icons(hass: HomeAssistant) -> dict[str, str | None]:
+    """{area name: its icon, e.g. "mdi:sofa"}, for the panel's area tiles."""
+    return {area.name: area.icon for area in ar.async_get(hass).async_list_areas()}
+
+
 def device_area(hass: HomeAssistant, ieee: str) -> str | None:
     device = dr.async_get(hass).async_get_device(identifiers={(ZHA, ieee)})
     return _area_name(hass, device.area_id) if device else None

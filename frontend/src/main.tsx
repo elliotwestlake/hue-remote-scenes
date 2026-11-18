@@ -6,17 +6,23 @@ import type { Hass } from "./types";
 /**
  * HA mounts this element for the sidebar panel and sets `hass`, `narrow`,
  * `route` and `panel` as properties. `hass` is reassigned on every state
- * change, so we keep it in a getter instead of re-rendering on each update.
+ * change, so we keep it in a getter and re-render at most once a second
+ * (for live on/off and battery).
  */
 class HueRemoteScenesPanel extends HTMLElement {
   private _hass?: Hass;
   private _narrow = false;
   private _root?: Root;
+  private _pending?: number;
 
   set hass(hass: Hass) {
     const first = !this._hass;
     this._hass = hass;
     if (first) this._render();
+    else this._pending ??= window.setTimeout(() => {
+      this._pending = undefined;
+      this._render();
+    }, 1000);
   }
 
   set narrow(narrow: boolean) {
@@ -39,6 +45,8 @@ class HueRemoteScenesPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
+    window.clearTimeout(this._pending);
+    this._pending = undefined;
     this._root?.unmount();
     this._root = undefined;
     this.shadowRoot?.replaceChildren();

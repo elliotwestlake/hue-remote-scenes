@@ -20,12 +20,18 @@ Looking for Hue's preset and animated (dynamic) scenes on ZHA? See [ZHA Scenes b
 
 <p>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/scenes-dark.png">
-    <img src="docs/scenes.png" alt="Scenes tab: a group card with the Hue Tap Dial's four button scenes, other scenes, and a scene saved on 2 of 3 lights" width="49%">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/areas-dark.png">
+    <img src="docs/areas.png" alt="Areas: a tile per room with its remotes and each group's scenes as colour swatches, and a Tap Dial that still needs setting up" width="100%">
+  </picture>
+</p>
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/area-dark.png">
+    <img src="docs/area.png" alt="The living room opened: the Tap Dial's four button scenes, other scenes, and the dial bound to the room" width="49%">
   </picture>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/remotes-dark.png">
-    <img src="docs/remotes.png" alt="Remotes tab: a Tap Dial set up and bound, a second dial ready to find its group, and a dimmer bound to the kitchen" width="49%">
+    <img src="docs/remotes.png" alt="All remotes: what each remote controls, battery levels, and a dial's set-up progress" width="49%">
   </picture>
 </p>
 
@@ -39,15 +45,21 @@ Looking for Hue's preset and animated (dynamic) scenes on ZHA? See [ZHA Scenes b
 
 Then go to **Settings → Devices & services → Add integration → Hue Remote Scenes**. A **Hue remote scenes** panel appears in the sidebar (admins only).
 
-You need ZHA groups first: **Settings → Devices & services → Zigbee Home Automation → Configure → Groups**.
+You need ZHA groups first: **Settings → Devices & services → Zigbee Home Automation → Configure → Groups** (a Tap Dial's set-up creates its own). The panel sorts groups and remotes into your Home Assistant areas, so give lights and remotes an area.
+
+## The panel
+
+- **Areas** shows a tile per area: its remotes, how many lights are on, and each group's scenes as swatches in the colours they were saved with. Tap a swatch to recall it. Areas with a remote that needs setting up come first.
+- **Open** an area to manage its scenes and see the remotes in it.
+- **All remotes** shows what each remote does (a Tap Dial's four button scenes, or the groups a dimmer controls), its battery and when it was last checked.
 
 ## Scenes
 
 1. Set the group's lights to the look you want (from HA or the remotes).
-2. In the panel, type a name and press **Save current state**.
-3. Recall it with ▶, with `scene.turn_on` on its entity (which supports `transition`), or from a bound remote.
+2. Open the area and press **Save current state** at the end of the group's scenes, then name it.
+3. Recall it by tapping its swatch, with `scene.turn_on` on its entity (which supports `transition`), or from a bound remote.
 
-The panel says which lights saved it. A light that was off the network when you saved gets flagged "on 2 of 3 lights"; use the overwrite button to save it again. Delete removes the scene from the lights too.
+The panel says which lights saved it. A light that was off the network when you saved gets flagged "2 of 3"; use **Save current state here** in the scene's ⋮ menu to save it again. Delete (same menu) removes the scene from the lights too. Swatches show what the lights looked like when the scene was saved; imported scenes show grey until you save them again.
 
 Recall is sent to the whole group in one Zigbee message, so the lights change together. Afterwards the lights are re-read so ZHA's light entities show the new state.
 
@@ -73,18 +85,18 @@ Both return a response with the result (which lights saved it, or which scenes w
 
 ## Remotes
 
-The **Remotes** tab lists devices that send on/off, dimming or scene commands. Pick a group and press **Bind**. Battery remotes sleep, so **press a button on the remote just before** binding or checking bindings.
+**All remotes** lists devices that send on/off, dimming or scene commands. Press **Bind to…**, pick a group and press **Bind**. Battery remotes sleep, so **press a button on the remote just before** binding or checking bindings.
 
-Hue Remote Scenes remembers what each remote is bound to, so the group cards show their area and bound remotes without waking anything. Bindings made outside Hue Remote Scenes appear after **Check bindings** on the remote. A group's area is the one set on ZHA's group light entity, or otherwise the areas of its lights.
+Hue Remote Scenes remembers what each remote is bound to, so the panel shows what each remote controls without waking anything. Bindings made outside Hue Remote Scenes appear after **Check bindings** on the remote. A group's area is the one set on ZHA's group light entity, or otherwise the areas of its lights.
 
 ## Hue Tap Dial scene buttons
 
-Once a Hue Tap Dial is set up, its four buttons recall scenes **stored in the lights**, without Home Assistant. Turning the dial dims, and holding any button turns the lights off. The catch is that each dial always uses its own built-in group, so the lights have to be in a group with exactly that ID. The **Remotes** tab handles this:
+Once a Hue Tap Dial is set up, its four buttons recall scenes **stored in the lights**, without Home Assistant. Turning the dial dims, and holding any button turns the lights off. The catch is that each dial always uses its own built-in group, so the lights have to be in a group with exactly that ID. **Set up scene buttons** on the dial's card (or **Set up** on its area) walks you through it:
 
 1. **Find its group:** press one of the dial's scene buttons a few times while Hue Remote Scenes waits. It reads the group ID from the press.
 2. **Create the group:** tick the lights the dial should control. Hue Remote Scenes creates a ZHA group with the dial's ID (or adds the lights, if ZHA already has it).
 3. **Bind:** press a dial button, then **Bind**.
-4. On the **Scenes** tab, the group's card now has a slot per button (● to ●●●●). Set the lights, then **Save current state** in each slot.
+4. **Save button scenes:** there's a slot per button (● to ●●●●). Set the lights, then **Save current state** in each slot. Later you can change them from the area, where they're shown as the dial's buttons.
 
 The buttons recall scenes 1, 0, 5 and 4 (the IDs come from [Zigbee2MQTT's Tap Dial docs](https://www.zigbee2mqtt.io/devices/8719514440937_8719514440999.html)). Other scenes you save in that group skip those IDs.
 

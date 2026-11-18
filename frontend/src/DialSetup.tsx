@@ -1,0 +1,291 @@
+import { useEffect, useState } from "react";
+import { Icon } from "./Icon";
+import { dialProgress, isOn, NO_AREA } from "./model";
+import { NewSceneCard, SceneCard } from "./SceneCard";
+import { dots, hex, plural, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
+import { useAction } from "./useAction";
+
+interface Props {
+  getHass: () => Hass;
+  remote: Remote;
+  groups: Group[];
+  onChanged: () => void;
+  onClose: () => void;
+}
+
+const STEPS = [
+  { title: "Find its group", hint: "Press a scene button" },
+  { title: "Choose lights", hint: "Creates the group in ZHA" },
+  { title: "Bind", hint: "Press a dial button first" },
+  { title: "Save button scenes", hint: "One per button" },
+];
+
+/**
+ * Hue Tap Dial: its buttons recall scenes 1, 0, 5 and 4 on its own built-in group, straight
+ * from the lights. Find that group, create it in ZHA with the lights, bind, then save a scene per button.
+ */
+export function DialSetup({ getHass, remote, groups, onChanged, onClose }: Props) {
+  const { busy, result, act, clear } = useAction();
+  const progress = dialProgress(remote, groups);
+  const [step, setStep] = useState(Math.min(progress.done, 3));
+  const dial = remote.dial;
+  const group = progress.group;
+
+  // Move on as steps complete (the dialog's data reloads after each one).
+  useEffect(() => {
+    setStep((s) => Math.max(s, Math.min(progress.done, 3)));
+  }, [progress.done]);
+
+  const go = (i: number) => {
+    clear();
+    setStep(i);
+  };
+
+  return (
+    <div className="dialog-scrim" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="dialog" role="dialog" aria-modal="true" aria-label={`Set up ${remote.name}`}>
+        <div className="dialog-head">
+          <span className="ricon"><ha-icon icon="mdi:knob" /></span>
+          <div className="grow">
+            <h2>Set up {remote.name}</h2>
+            <div className="muted small">Scene buttons that work even when Home Assistant is down</div>
+          </div>
+          <button className="icon-btn" onClick={onClose} disabled={!!busy} aria-label="Close"><Icon name="close" /></button>
+        </div>
+
+        <div className="dialog-body">
+          <ol className="stepper">
+            {STEPS.map((s, i) => {
+              const done = [progress.found, !!group, progress.bound, progress.saved][i];
+              return (
+                <li key={s.title}>
+                  <button className={`step ${i === step ? "cur" : ""} ${done ? "done" : ""}`} onClick={() => go(i)} disabled={!!busy}>
+                    <span className="num">{done ? <Icon name="check" /> : i + 1}</span>
+                    <span>
+                      <strong>{s.title}</strong>
+                      <span className="muted small">{i === 0 && dial ? `Uses group ${hex(dial.group_id)}` : s.hint}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="dialog-main">
+            {step === 0 && <FindStep getHass={getHass} remote={remote} busy={!!busy} act={act} onChanged={onChanged} />}
+            {step === 1 && (dial ? <LightsStep getHass={getHass} remote={remote} group={group} busy={!!busy} act={act} onChanged={onChanged} /> : <NeedEarlier />)}
+            {step === 2 &&
+              (dial && group ? (
+                <BindStep getHass={getHass} remote={remote} group={group} bound={progress.bound} busy={!!busy} act={act} onChanged={onChanged} />
+              ) : (
+                <NeedEarlier />
+              ))}
+            {step === 3 && (dial && group ? <ScenesStep getHass={getHass} remote={remote} group={group} busy={!!busy} act={act} onChanged={onChanged} /> : <NeedEarlier />)}
+
+            {busy && <div className="status busy">{busy}</div>}
+            {result && <div className={`status ${result.kind}`}>{result.text}</div>}
+          </div>
+        </div>
+
+        <div className="dialog-foot">
+          <span className="muted small grow">Step {step + 1} of 4</span>
+          {step > 0 && <button disabled={!!busy} onClick={() => go(step - 1)}>Back</button>}
+          {step < 3 ? (
+            <button className="primary" disabled={!!busy || progress.done <= step} onClick={() => go(step + 1)}>Next</button>
+          ) : (
+            <button className="primary" disabled={!!busy} onClick={onClose}>Done</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface StepProps {
+  getHass: () => Hass;
+  remote: Remote;
+  busy: boolean;
+  act: (fn: () => Promise<string | void>, waiting?: string) => Promise<void>;
+  onChanged: () => void;
+}
+
+const NeedEarlier = () => <p className="muted">Finish the earlier steps first.</p>;
+
+function FindStep({ getHass, remote, busy, act, onChanged }: StepProps) {
+  const find = () =>
+    act(async () => {
+      const r = await getHass().callWS<{ group_id: number; exists: boolean }>({ type: "hue_remote_scenes/find_dial_group", ieee: remote.ieee });
+      onChanged();
+      return `Its scene buttons use group ${hex(r.group_id)}${r.exists ? ", which ZHA already has" : ""}.`;
+    }, "Press one of the dial's scene buttons now, then again every few seconds until this finishes…");
+  return (
+    <div className="step-body">
+      <h3 className="title">Find the dial's group</h3>
+      <p className="muted">
+        Each Tap Dial recalls its scenes on its own built-in group. Press <strong>Find its group</strong>, then press one of
+        the dial's four buttons a few times so it wakes up and shows which group it uses.
+      </p>
+      <div>
+        <button className="primary" disabled={busy} onClick={find}><Icon name="magnify" /> {remote.dial ? "Find again" : "Find its group"}</button>
+      </div>
+    </div>
+  );
+}
+
+function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps & { group: Group | undefined }) {
+  const [lights, setLights] = useState<Light[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [name, setName] = useState(remote.name);
+  const hass = getHass();
+  const members = new Set(group?.members.map((m) => m.key) ?? []);
+
+  useEffect(() => {
+    getHass()
+      .callWS<{ lights: Light[] }>({ type: "hue_remote_scenes/lights" })
+      .then((r) => setLights(r.lights))
+      .catch(() => setLights([]));
+  }, [getHass]);
+
+  const toggle = (key: string) =>
+    setPicked((p) => {
+      const next = new Set(p);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  const create = () =>
+    act(async () => {
+      await getHass().callWS({ type: "hue_remote_scenes/create_group", group_id: remote.dial!.group_id, name: group?.name ?? name, members: [...picked] });
+      setPicked(new Set());
+      onChanged();
+      return group ? `Added ${plural(picked.size, "light")} to ${group.name}.` : `Created ${name}. Next, bind the dial to it.`;
+    }, "Adding the lights to the group…");
+
+  // By area, the dial's own area first.
+  const byArea = new Map<string, Light[]>();
+  for (const l of lights ?? []) {
+    const a = l.area ?? NO_AREA;
+    byArea.set(a, [...(byArea.get(a) ?? []), l]);
+  }
+  const areas = [...byArea.keys()].sort(
+    (a, b) => Number(b === remote.area) - Number(a === remote.area) || Number(a === NO_AREA) - Number(b === NO_AREA) || a.localeCompare(b),
+  );
+
+  return (
+    <div className="step-body">
+      <h3 className="title">{group ? `Lights in ${group.name}` : "Which lights should the dial control?"}</h3>
+      <p className="muted">
+        {group
+          ? `${plural(group.members.length, "light")} are in the dial's group. Tick more to add them.`
+          : "They'll go in a new ZHA group with the dial's ID. Only lights that can store scenes are listed."}
+      </p>
+      {!lights && <p className="muted">Loading lights…</p>}
+      {lights && !lights.length && <p className="muted">No lights that can store scenes found.</p>}
+      {areas.map((a) => (
+        <div key={a} className="stack-sm">
+          <p className="label">{a}</p>
+          <div className="picks">
+            {byArea.get(a)!.map((l) => {
+              const inGroup = members.has(l.key);
+              const on = inGroup || picked.has(l.key);
+              return (
+                <label key={l.key} className={`pick ${on ? "on" : ""}`}>
+                  <input type="checkbox" checked={on} disabled={inGroup || busy} onChange={() => toggle(l.key)} />
+                  <span className={`bulb ${isOn(hass, l.entity_id) ? "lit" : ""}`} />
+                  <span className="grow">{l.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {!group && (
+        <label className="stack-sm">
+          <strong>Group name</strong>
+          <input type="text" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
+        </label>
+      )}
+      <div className="row-end">
+        <span className="muted small grow">{picked.size ? `${plural(picked.size, "light")} selected` : ""}</span>
+        <button className="primary" disabled={busy || !picked.size || (!group && !name.trim())} onClick={create}>
+          <Icon name="plus" /> {group ? "Add lights" : "Create group"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BindStep({ getHass, remote, group, bound, busy, act, onChanged }: StepProps & { group: Group; bound: boolean }) {
+  const ep = remote.endpoints.find((e) => e.clusters.includes(5)) ?? remote.endpoints[0];
+  const bind = () =>
+    act(async () => {
+      const r = await getHass().callWS<{ results: Record<string, string> }>({
+        type: "hue_remote_scenes/bind",
+        ieee: remote.ieee,
+        endpoint: ep.id,
+        group_id: group.id,
+        clusters: ep.clusters,
+        unbind: false,
+      });
+      onChanged();
+      const failed = Object.entries(r.results).filter(([, v]) => v !== "ok");
+      if (failed.length === Object.keys(r.results).length) return "The dial didn't answer. Press one of its buttons and try again.";
+      if (failed.length) return `Bound, but some parts didn't take (${failed.map(([c, v]) => `${c}: ${v}`).join(", ")}). Try again.`;
+      return `Bound to ${group.name}.`;
+    }, "Waiting for the dial… press one of its buttons.");
+  return (
+    <div className="step-body">
+      <h3 className="title">Bind the dial to {group.name}</h3>
+      <p className="muted">
+        Binding makes the dial talk to the lights directly over Zigbee. The dial is asleep most of the time:{" "}
+        <strong>press one of its buttons</strong>, then press Bind.
+      </p>
+      <div className="row-start">
+        <button className="primary" disabled={busy} onClick={bind}><Icon name="link-variant-plus" /> {bound ? "Bind again" : "Bind"}</button>
+        {bound && <span className="chip ok">Bound</span>}
+      </div>
+    </div>
+  );
+}
+
+function ScenesStep({ getHass, remote, group, busy, act, onChanged }: StepProps & { group: Group }) {
+  const capable = group.members.filter((m) => m.scenes);
+  const save = (sceneId: number, name?: string) =>
+    act(async () => {
+      const r = await getHass().callWS<StoreResult>({ type: "hue_remote_scenes/store", group_id: group.id, scene_id: sceneId, ...(name ? { name } : {}) });
+      onChanged();
+      const failed = Object.keys(r.failed).length;
+      return failed ? `Saved on ${r.ok.length} of ${r.ok.length + failed} lights; some didn't answer.` : `Saved on ${plural(r.ok.length, "light")}`;
+    });
+  return (
+    <div className="step-body">
+      <h3 className="title">Save a scene for each button</h3>
+      <p className="muted">
+        Set the {group.name} lights how you want them for a button, then save. Do this for each one. You can change them
+        later from the area.
+      </p>
+      <div className="cards2">
+        {remote.dial!.buttons.map(([label, sid]) => {
+          const scene = group.scenes.find((s) => s.id === sid);
+          return scene ? (
+            <SceneCard
+              key={sid}
+              scene={scene}
+              badge={dots(label)}
+              total={capable.length}
+              missing=""
+              busy={busy}
+              onRecall={() => act(async () => {
+                await getHass().callWS({ type: "hue_remote_scenes/recall", group_id: group.id, scene_id: sid });
+                return `Recalled ${scene.name}`;
+              })}
+              onOverwrite={() => confirm(`Save how the lights are now as "${scene.name}"?`) && save(sid)}
+            />
+          ) : (
+            <NewSceneCard key={sid} badge={dots(label)} placeholder={`Scene for ${label}`} busy={busy} onSave={(name) => save(sid, name)} />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
