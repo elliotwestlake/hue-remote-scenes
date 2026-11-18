@@ -46,7 +46,7 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
 - [ ] Tap Dial scene buttons on real hardware: find group → create → bind → save the four slots → press each button.
 - [ ] Bind a Tap Dial to a group from the Remotes tab; check the binding table read. Check what the dial's buttons and rotation do once bound.
 - [ ] After migrating from Z2M: **Import from lights** on groups recreated with the same ids.
-- [x] Brand icons (`brand/icon.png`, `icon@2x.png`: three overlapping light circles, drawn with Pillow) and repo topics, for the Marketplace checks.
+- [x] Brand images in `brand/`: `icon`, `logo` and `dark_logo` (each with `@2x`). A colour-wheel dial ring around a gradient bulb, plus the name in Nunito, drawn as HTML/SVG and screenshotted in headless Chromium. The README header uses the logos. No Philips Hue logo (Signify's trademark) and repo topics, for the Marketplace checks.
 - [ ] If ZHA reloads, the gateway object changes. We look it up on every call, so this should be fine, but it's untested.
 
 ## Conventions

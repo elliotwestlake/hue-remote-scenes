@@ -1,4 +1,9 @@
-# Hue Remote Scenes
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/hue_remote_scenes/brand/dark_logo@2x.png">
+    <img src="custom_components/hue_remote_scenes/brand/logo@2x.png" alt="Hue Remote Scenes" height="96">
+  </picture>
+</h1>
 
 Make your Philips Hue remotes recall scenes stored in your lamps, on Home Assistant's **ZHA**, without a Hue Bridge. Press a button and the lamps change straight away over Zigbee, even when Home Assistant is down.
 
