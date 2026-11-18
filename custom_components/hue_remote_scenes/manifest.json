@@ -1,6 +1,6 @@
 {
-  "domain": "zha_scenes",
-  "name": "ZHA Scenes",
+  "domain": "hue_remote_scenes",
+  "name": "Hue Remote Scenes",
   "codeowners": [
     "@elliotwestlake"
   ],
@@ -12,10 +12,10 @@
     "websocket_api",
     "zha"
   ],
-  "documentation": "https://github.com/elliotwestlake/zha-scenes",
+  "documentation": "https://github.com/elliotwestlake/hue-remote-scenes",
   "integration_type": "service",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/elliotwestlake/zha-scenes/issues",
+  "issue_tracker": "https://github.com/elliotwestlake/hue-remote-scenes/issues",
   "requirements": [],
   "single_config_entry": true,
   "version": "0.1.0"

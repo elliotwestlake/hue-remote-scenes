@@ -13,7 +13,7 @@ export function Remotes({ getHass, groups }: Props) {
 
   const reload = () =>
     getHass()
-      .callWS<{ remotes: Remote[] }>({ type: "zha_scenes/remotes" })
+      .callWS<{ remotes: Remote[] }>({ type: "hue_remote_scenes/remotes" })
       .then((r) => setRemotes(r.remotes))
       .catch((e) => setError(errorText(e)));
 
@@ -66,7 +66,7 @@ function RemoteCard({ getHass, remote, groups, onChanged }: CardProps) {
   const groupName = (id: number) => groups.find((g) => g.id === id)?.name ?? `Group ${id}`;
 
   const readBindings = async () => {
-    const r = await getHass().callWS<{ bindings: Binding[] }>({ type: "zha_scenes/bindings", ieee: remote.ieee });
+    const r = await getHass().callWS<{ bindings: Binding[] }>({ type: "hue_remote_scenes/bindings", ieee: remote.ieee });
     setBindings(r.bindings);
     setChecked(new Date().toISOString());
   };
@@ -87,7 +87,7 @@ function RemoteCard({ getHass, remote, groups, onChanged }: CardProps) {
   const bind = (unbind: boolean, gid = groupId) =>
     act(async () => {
       const r = await getHass().callWS<{ results: Record<string, string> }>({
-        type: "zha_scenes/bind",
+        type: "hue_remote_scenes/bind",
         ieee: remote.ieee,
         endpoint: ep.id,
         group_id: gid,
@@ -223,7 +223,7 @@ function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChange
   useEffect(() => {
     if (dial && !group && !lights)
       getHass()
-        .callWS<{ lights: Light[] }>({ type: "zha_scenes/lights" })
+        .callWS<{ lights: Light[] }>({ type: "hue_remote_scenes/lights" })
         .then((r) => setLights(r.lights))
         .catch(() => setLights([]));
   }, [dial, group, lights, getHass]);
@@ -231,7 +231,7 @@ function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChange
   const find = () =>
     act(async () => {
       const r = await getHass().callWS<{ group_id: number; exists: boolean }>({
-        type: "zha_scenes/find_dial_group",
+        type: "hue_remote_scenes/find_dial_group",
         ieee: remote.ieee,
       });
       onChanged();
@@ -240,7 +240,7 @@ function DialSetup({ getHass, remote, groups, busy, bound, act, onBind, onChange
 
   const create = () =>
     act(async () => {
-      await getHass().callWS({ type: "zha_scenes/create_group", group_id: dial!.group_id, name, members: [...picked] });
+      await getHass().callWS({ type: "hue_remote_scenes/create_group", group_id: dial!.group_id, name, members: [...picked] });
       return `Created ${name}. Now bind the dial to it.`;
     }, "Adding the lights to the group…");
 

@@ -2,12 +2,12 @@
   "config": {
     "step": {
       "user": {
-        "title": "ZHA Scenes",
-        "description": "Adds a Zigbee scenes panel to the sidebar, and a scene entity for each scene you save. Your ZHA groups are used as they are."
+        "title": "Hue Remote Scenes",
+        "description": "Adds a Hue remote scenes panel to the sidebar, and a scene entity for each scene you save. Your ZHA groups are used as they are."
       }
     },
     "abort": {
-      "single_instance_allowed": "ZHA Scenes is already set up.",
+      "single_instance_allowed": "Hue Remote Scenes is already set up.",
       "no_zha": "ZHA isn't set up in Home Assistant. Set it up first."
     }
   },
@@ -18,7 +18,7 @@
       "fields": {
         "group_id": {
           "name": "Group ID",
-          "description": "The ZHA group's ID (shown in the Zigbee scenes panel)."
+          "description": "The ZHA group's ID (shown in the Hue remote scenes panel)."
         },
         "name": {
           "name": "Name",

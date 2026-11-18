@@ -1,4 +1,4 @@
-"""ZHA Scenes: Zigbee scenes stored on your lights, and remote-to-group bindings, for ZHA."""
+"""Hue Remote Scenes: Hue remotes recalling scenes stored in the lamps, on ZHA, no Hue Bridge."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from .manager import SceneManager
 from .store import SceneStore
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
-BUNDLE = "zha-scenes-panel.js"
+BUNDLE = "hue-remote-scenes-panel.js"
 PLATFORMS = [Platform.SCENE]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -50,7 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ScenesConfigEntry) -> bo
             hass,
             webcomponent_name=PANEL_COMPONENT,
             frontend_url_path=PANEL_URL,
-            sidebar_title="Zigbee scenes",
+            sidebar_title="Hue remote scenes",
             sidebar_icon="mdi:palette-outline",
             # Query string busts the browser cache when the bundle changes.
             module_url=f"{STATIC_URL}/{BUNDLE}?v={_bundle_mtime()}",

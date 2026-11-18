@@ -1,21 +1,21 @@
-# ZHA Scenes — project notes
+# Hue Remote Scenes — project notes
 
-A Home Assistant Marketplace (formerly HACS) custom integration, domain `zha_scenes`, adding what ZHA lacks compared with Zigbee2MQTT: **Zigbee scenes stored on the lights** (store / recall / rename / delete / import) and a friendlier **remote → group binding** UI. Built for Elliot's Hue lights and Hue Tap Dials, as part of moving from Z2M to ZHA. Sibling project: `hive-local` (same structure and conventions).
+A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_remote_scenes`, (renamed from `zha_scenes`/ZHA Scenes on 2026-11-18: that name clashed with marcelveldt/zha-scenes, a Hue preset/dynamic scenes project). It makes **Hue remotes recall scenes stored in the lamps** on ZHA, with no Hue Bridge: Tap Dial set-up (fixed group, button scene ids), scenes stored on the lights (store / recall / rename / delete / import) and a **remote → group binding** UI. Hue-first by design; other Zigbee lamps can share the groups. Built for Elliot's Hue lights and Hue Tap Dials, as part of moving from Z2M to ZHA. Sibling project: `hive-local` (same structure and conventions).
 
 ## Layout
 
-- `custom_components/zha_scenes/`
+- `custom_components/hue_remote_scenes/`
   - `__init__.py`: `async_setup` registers the static path, websocket commands and actions. `async_setup_entry` checks ZHA is running (else `ConfigEntryNotReady`), loads the store, sets `entry.runtime_data = SceneManager`, forwards the `scene` platform, registers the admin-only panel.
   - `config_flow.py`: one step, aborts if ZHA isn't loaded. `single_config_entry` in the manifest.
   - `zigbee.py`: all ZHA/zigpy access, via `homeassistant.components.zha.helpers.get_zha_gateway(hass)` → `.groups` (id → ZHA Group: `.name`, `.members` with `.device`/`.endpoint_id`/`.endpoint`, `.endpoint` = zigpy group endpoint) and `.devices` (EUI64 → ZHA Device: `.device` is zigpy).
   - `manager.py`: `SceneManager`, the operations shared by websocket, actions and entities.
-  - `store.py`: scene names and member lists, plus each remote's remembered group bindings, in HA storage (`.storage/zha_scenes`). Fires `SIGNAL_SCENES` on change.
+  - `store.py`: scene names and member lists, plus each remote's remembered group bindings, in HA storage (`.storage/hue_remote_scenes`). Fires `SIGNAL_SCENES` on change. On first start with no store of its own, it imports the pre-rename `.storage/zha_scenes` (`LEGACY_STORAGE_KEY`).
   - `areas.py`: HA areas. A group's area is the area set on ZHA's group entity (`light_zha_group_0x<id>`, platform `zha`, owned by the coordinator), otherwise its members' device areas. Devices are looked up by identifier `("zha", str(ieee))`.
   - `scene.py`: one `scene` entity per stored scene, added and removed as the store changes. Unique id `<group>_<scene>`.
-  - `websocket.py`: `zha_scenes/groups|subscribe|store|recall|rename|delete|import|remotes|bindings|bind`.
+  - `websocket.py`: `hue_remote_scenes/groups|subscribe|store|recall|rename|delete|import|remotes|bindings|bind`.
   - `services.py`: `store_scene`, `import_scenes` (both return a response). Recall is `scene.turn_on`.
   - `logic.py`: pure helpers (no HA or zigpy imports), unit-tested in `tests/`.
-  - `frontend/zha-scenes-panel.js`: **built artifact**. Don't edit it. Run `npm run build` in `/frontend`.
+  - `frontend/hue-remote-scenes-panel.js`: **built artifact**. Don't edit it. Run `npm run build` in `/frontend`.
 - `frontend/src/`: React 18 panel copied from hive-local's shell (`main.tsx`, `Icon.tsx`, base styles). `Scenes.tsx` (a card per group) and `Remotes.tsx`.
 - `tests_ha/`: end-to-end tests with `pytest-homeassistant-custom-component` (HA 2026.2.3, zha 0.0.90). Real zigpy `Device`s and a zigpy `Groups`, a fake radio that decodes every frame and answers like real bulbs/remotes, and a fake ZHA gateway. Not run in CI (CI only installs `pytest`).
 

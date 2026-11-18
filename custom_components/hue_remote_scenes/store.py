@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
-from .const import SIGNAL_SCENES, STORAGE_KEY, STORAGE_VERSION
+from .const import LEGACY_STORAGE_KEY, SIGNAL_SCENES, STORAGE_KEY, STORAGE_VERSION
 
 
 def _key(value: int) -> str:
@@ -24,7 +24,14 @@ class SceneStore:
         self.remotes: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
-        data = await self._store.async_load() or {}
+        data = await self._store.async_load()
+        if data is None:
+            # First start after the rename from ZHA Scenes: bring the old data across.
+            legacy = await Store(self.hass, STORAGE_VERSION, LEGACY_STORAGE_KEY).async_load()
+            if legacy:
+                await self._store.async_save(legacy)
+            data = legacy
+        data = data or {}
         self.groups = data.get("groups", {})
         self.remotes = data.get("remotes", {})
 

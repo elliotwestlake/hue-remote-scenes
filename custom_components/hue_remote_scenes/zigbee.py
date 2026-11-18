@@ -159,7 +159,7 @@ async def async_recall(
     @callback
     def _refresh(_now) -> None:
         hass.async_create_background_task(
-            _async_refresh(group), f"zha_scenes refresh {group_id}"
+            _async_refresh(group), f"hue_remote_scenes refresh {group_id}"
         )
 
     async_call_later(hass, REFRESH_DELAY + (transition or 0), _refresh)
@@ -337,7 +337,7 @@ async def async_find_dial_group(hass: HomeAssistant, ieee: str, timeout: float) 
 
     listener = _Listener()
     cluster.add_listener(listener)
-    binder = hass.async_create_background_task(_bind_to_coordinator(), f"zha_scenes bind {ieee}")
+    binder = hass.async_create_background_task(_bind_to_coordinator(), f"hue_remote_scenes bind {ieee}")
     try:
         return await asyncio.wait_for(found, timeout)
     except TimeoutError as err:

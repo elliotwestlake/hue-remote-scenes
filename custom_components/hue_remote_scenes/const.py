@@ -1,12 +1,14 @@
-"""Constants for ZHA Scenes."""
+"""Constants for Hue Remote Scenes."""
 
-DOMAIN = "zha_scenes"
+DOMAIN = "hue_remote_scenes"
 
-PANEL_URL = "zha-scenes"
-PANEL_COMPONENT = "zha-scenes-panel"
-STATIC_URL = "/zha_scenes_static"
+PANEL_URL = "hue-remote-scenes"
+PANEL_COMPONENT = "hue-remote-scenes-panel"
+STATIC_URL = "/hue_remote_scenes_static"
 
 STORAGE_KEY = DOMAIN
+# Before the rename to Hue Remote Scenes; imported once if there's no new store yet.
+LEGACY_STORAGE_KEY = "zha_scenes"
 STORAGE_VERSION = 1
 
 # Fired (no args) whenever the stored scenes change, so scene entities can be

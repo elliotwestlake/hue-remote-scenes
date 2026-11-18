@@ -58,7 +58,7 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
 
   const save = () => {
     if (!newName.trim()) return;
-    run({ type: "zha_scenes/store", name: newName }, storeText("Saved")).then(() => setNewName(""));
+    run({ type: "hue_remote_scenes/store", name: newName }, storeText("Saved")).then(() => setNewName(""));
   };
 
   return (
@@ -95,7 +95,7 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
           disabled={busy || !capable.length}
           title="Ask the lights which scenes they already have, e.g. ones made in Zigbee2MQTT"
           onClick={() =>
-            run({ type: "zha_scenes/import" }, (r) =>
+            run({ type: "hue_remote_scenes/import" }, (r) =>
               r.added.length
                 ? `Found ${r.added.length} new scene${r.added.length === 1 ? "" : "s"}. Give them names below.`
                 : r.found.length
@@ -124,9 +124,9 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
                   scene={group.scenes.find((s) => s.id === b.scene_id)}
                   busy={busy}
                   onSave={(name) =>
-                    run({ type: "zha_scenes/store", scene_id: b.scene_id, ...(name ? { name } : {}) }, storeText("Saved"))
+                    run({ type: "hue_remote_scenes/store", scene_id: b.scene_id, ...(name ? { name } : {}) }, storeText("Saved"))
                   }
-                  onRecall={() => run({ type: "zha_scenes/recall", scene_id: b.scene_id }, () => "Recalled")}
+                  onRecall={() => run({ type: "hue_remote_scenes/recall", scene_id: b.scene_id }, () => "Recalled")}
                 />
               ))}
               <p className="muted small">Hold any button to turn the lights off. Turn the dial to dim.</p>
@@ -142,15 +142,15 @@ function GroupCard({ getHass, group, onChanged }: { getHass: () => Hass; group: 
                 total={capable.length}
                 busy={busy}
                 missing={describe(capable.map((m) => m.key).filter((k) => !s.members.includes(k)))}
-                onRecall={() => run({ type: "zha_scenes/recall", scene_id: s.id }, () => `Recalled ${s.name}`)}
+                onRecall={() => run({ type: "hue_remote_scenes/recall", scene_id: s.id }, () => `Recalled ${s.name}`)}
                 onUpdate={() => {
                   if (confirm(`Overwrite "${s.name}" with how the lights are now?`))
-                    run({ type: "zha_scenes/store", scene_id: s.id }, storeText("Updated"));
+                    run({ type: "hue_remote_scenes/store", scene_id: s.id }, storeText("Updated"));
                 }}
-                onRename={(name) => run({ type: "zha_scenes/rename", scene_id: s.id, name }, () => "Renamed")}
+                onRename={(name) => run({ type: "hue_remote_scenes/rename", scene_id: s.id, name }, () => "Renamed")}
                 onDelete={() => {
                   if (confirm(`Delete "${s.name}" from the lights?`))
-                    run({ type: "zha_scenes/delete", scene_id: s.id }, (r) =>
+                    run({ type: "hue_remote_scenes/delete", scene_id: s.id }, (r) =>
                       Object.keys(r.failed).length
                         ? `Deleted, but some lights didn't answer and may still have it: ${describe(Object.keys(r.failed))}`
                         : `Deleted ${s.name}`,

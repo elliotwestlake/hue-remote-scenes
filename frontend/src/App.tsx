@@ -24,7 +24,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
 
   const reload = useCallback(() => {
     getHass()
-      .callWS<{ groups: Group[] }>({ type: "zha_scenes/groups" })
+      .callWS<{ groups: Group[] }>({ type: "hue_remote_scenes/groups" })
       .then((r) => {
         setGroups(r.groups);
         setError("");
@@ -34,7 +34,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
 
   useEffect(() => {
     reload();
-    const unsub = getHass().connection.subscribeMessage(reload, { type: "zha_scenes/subscribe" });
+    const unsub = getHass().connection.subscribeMessage(reload, { type: "hue_remote_scenes/subscribe" });
     return () => {
       unsub.then((u) => u()).catch(() => {});
     };
@@ -50,7 +50,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
             </button>
           )}
           <Icon name="palette-outline" className="brand" />
-          <h1>Zigbee scenes</h1>
+          <h1>Hue remote scenes</h1>
         </div>
         <nav className="tabs" role="tablist">
           {TABS.map((t) => (

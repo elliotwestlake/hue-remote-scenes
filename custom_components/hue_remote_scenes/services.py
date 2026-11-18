@@ -27,7 +27,7 @@ def async_register(hass: HomeAssistant) -> None:
     def _manager():
         entries = hass.config_entries.async_loaded_entries(DOMAIN)
         if not entries:
-            raise ServiceValidationError("ZHA Scenes isn't set up")
+            raise ServiceValidationError("Hue Remote Scenes isn't set up")
         return entries[0].runtime_data
 
     async def store_scene(call: ServiceCall):

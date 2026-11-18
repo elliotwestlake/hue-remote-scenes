@@ -1,7 +1,7 @@
 import importlib.util, pathlib, pytest
 
 spec = importlib.util.spec_from_file_location(
-    "logic", pathlib.Path(__file__).parents[1] / "custom_components/zha_scenes/logic.py")
+    "logic", pathlib.Path(__file__).parents[1] / "custom_components/hue_remote_scenes/logic.py")
 L = importlib.util.module_from_spec(spec); spec.loader.exec_module(L)
 
 def test_next_scene_id():

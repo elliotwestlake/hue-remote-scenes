@@ -1,18 +1,18 @@
 """Websocket API used by the sidebar panel.
 
-zha_scenes/groups                                    -> ZHA groups: members, areas, scenes, bound remotes
-zha_scenes/subscribe                                 -> pushes {} whenever stored scenes change
-zha_scenes/store   {group_id, name? , scene_id?}     -> new scene (name) or re-save (scene_id)
-zha_scenes/recall  {group_id, scene_id, transition?}
-zha_scenes/rename  {group_id, scene_id, name}
-zha_scenes/delete  {group_id, scene_id}
-zha_scenes/import  {group_id}                         -> scenes the lights already have
-zha_scenes/remotes                                   -> remotes, their area and remembered bindings
-zha_scenes/bindings {ieee}                            -> the remote's group bindings (must be awake)
-zha_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
-zha_scenes/find_dial_group {ieee}                     -> the group a dial recalls scenes on (needs a button press)
-zha_scenes/lights                                    -> lights that can join a group
-zha_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
+hue_remote_scenes/groups                                    -> ZHA groups: members, areas, scenes, bound remotes
+hue_remote_scenes/subscribe                                 -> pushes {} whenever stored scenes change
+hue_remote_scenes/store   {group_id, name? , scene_id?}     -> new scene (name) or re-save (scene_id)
+hue_remote_scenes/recall  {group_id, scene_id, transition?}
+hue_remote_scenes/rename  {group_id, scene_id, name}
+hue_remote_scenes/delete  {group_id, scene_id}
+hue_remote_scenes/import  {group_id}                         -> scenes the lights already have
+hue_remote_scenes/remotes                                   -> remotes, their area and remembered bindings
+hue_remote_scenes/bindings {ieee}                            -> the remote's group bindings (must be awake)
+hue_remote_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
+hue_remote_scenes/find_dial_group {ieee}                     -> the group a dial recalls scenes on (needs a button press)
+hue_remote_scenes/lights                                    -> lights that can join a group
+hue_remote_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def _handler(
     async def wrapper(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         manager = _manager(hass)
         if manager is None:
-            connection.send_error(msg["id"], "not_loaded", "ZHA Scenes isn't set up")
+            connection.send_error(msg["id"], "not_loaded", "Hue Remote Scenes isn't set up")
             return
         try:
             result = await func(hass, connection, msg, manager)
@@ -84,7 +84,7 @@ def _handler(
     return wrapper
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/groups"})
+@websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/groups"})
 @websocket_api.async_response
 @_handler
 async def ws_groups(hass, connection, msg, manager: SceneManager):
@@ -118,7 +118,7 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
     return {"groups": out}
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/subscribe"})
+@websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/subscribe"})
 @callback
 def ws_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     @callback
@@ -131,7 +131,7 @@ def ws_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "zha_scenes/store",
+        vol.Required("type"): "hue_remote_scenes/store",
         vol.Optional("name"): str,
         vol.Optional("scene_id"): vol.All(vol.Coerce(int), vol.Range(0, 255)),
     }
@@ -145,7 +145,7 @@ async def ws_store(hass, connection, msg, manager: SceneManager):
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "zha_scenes/recall",
+        vol.Required("type"): "hue_remote_scenes/recall",
         vol.Optional("transition"): vol.All(vol.Coerce(float), vol.Range(0, 6000)),
     }
     | SCENE
@@ -158,7 +158,7 @@ async def ws_recall(hass, connection, msg, manager: SceneManager):
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "zha_scenes/rename", vol.Required("name"): str} | SCENE
+    {vol.Required("type"): "hue_remote_scenes/rename", vol.Required("name"): str} | SCENE
 )
 @websocket_api.async_response
 @_handler
@@ -167,21 +167,21 @@ async def ws_rename(hass, connection, msg, manager: SceneManager):
     return {"ok": True}
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/delete"} | SCENE)
+@websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/delete"} | SCENE)
 @websocket_api.async_response
 @_handler
 async def ws_delete(hass, connection, msg, manager: SceneManager):
     return await manager.async_delete(msg["group_id"], msg["scene_id"])
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/import"} | GROUP)
+@websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/import"} | GROUP)
 @websocket_api.async_response
 @_handler
 async def ws_import(hass, connection, msg, manager: SceneManager):
     return await manager.async_import(msg["group_id"])
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/remotes"})
+@websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/remotes"})
 @websocket_api.async_response
 @_handler
 async def ws_remotes(hass, connection, msg, manager: SceneManager):
@@ -199,7 +199,7 @@ async def ws_remotes(hass, connection, msg, manager: SceneManager):
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "zha_scenes/bindings", vol.Required("ieee"): str}
+    {vol.Required("type"): "hue_remote_scenes/bindings", vol.Required("ieee"): str}
 )
 @websocket_api.async_response
 @_handler
@@ -213,7 +213,7 @@ async def ws_bindings(hass, connection, msg, manager: SceneManager):
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "zha_scenes/bind",
+        vol.Required("type"): "hue_remote_scenes/bind",
         vol.Required("ieee"): str,
         vol.Required("endpoint"): vol.Coerce(int),
         vol.Optional("clusters", default=list(REMOTE_CLUSTERS)): [vol.In(REMOTE_CLUSTERS)],
@@ -242,7 +242,7 @@ async def ws_bind(hass, connection, msg, manager: SceneManager):
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "zha_scenes/find_dial_group",
+        vol.Required("type"): "hue_remote_scenes/find_dial_group",
         vol.Required("ieee"): str,
         vol.Optional("timeout", default=90): vol.All(vol.Coerce(float), vol.Range(5, 300)),
     }
@@ -257,7 +257,7 @@ async def ws_find_dial_group(hass, connection, msg, manager: SceneManager):
     return found | {"exists": exists}
 
 
-@websocket_api.websocket_command({vol.Required("type"): "zha_scenes/lights"})
+@websocket_api.websocket_command({vol.Required("type"): "hue_remote_scenes/lights"})
 @websocket_api.async_response
 @_handler
 async def ws_lights(hass, connection, msg, manager: SceneManager):
@@ -266,7 +266,7 @@ async def ws_lights(hass, connection, msg, manager: SceneManager):
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "zha_scenes/create_group",
+        vol.Required("type"): "hue_remote_scenes/create_group",
         vol.Required("name"): vol.All(str, vol.Length(min=1, max=40)),
         vol.Required("members"): vol.All([str], vol.Length(min=1)),
     }

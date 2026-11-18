@@ -7,12 +7,12 @@ export default defineConfig({
   plugins: [react()],
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: {
-    outDir: "../custom_components/zha_scenes/frontend",
+    outDir: "../custom_components/hue_remote_scenes/frontend",
     emptyOutDir: true,
     lib: {
       entry: "src/main.tsx",
       formats: ["es"],
-      fileName: () => "zha-scenes-panel.js",
+      fileName: () => "hue-remote-scenes-panel.js",
     },
     rollupOptions: { output: { inlineDynamicImports: true } },
   },

@@ -1,4 +1,4 @@
-"""End-to-end ZHA Scenes test: real zigpy devices/groups, fake radio, fake ZHA gateway.
+"""End-to-end Hue Remote Scenes test: real zigpy devices/groups, fake radio, fake ZHA gateway.
 
 The radio decodes every frame and behaves like real devices:
 - bulbs keep a scene table {(group, scene): state} and answer store/remove/
@@ -34,7 +34,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-DOMAIN = "zha_scenes"
+DOMAIN = "hue_remote_scenes"
 GROUP = 5
 S2C = foundation.Direction.Server_to_Client
 
@@ -197,7 +197,7 @@ def _device(app, ieee, nwk, endpoints):
 
 @pytest.fixture
 def zigbee():
-    import custom_components.zha_scenes.zigbee  # noqa: F401
+    import custom_components.hue_remote_scenes.zigbee  # noqa: F401
     app = FakeApp()
     bulb_eps = {11: ([0x0000, 0x0004, 0x0005, 0x0006, 0x0008, 0x0300], [0x0019])}
     bulb1 = _device(app, "00:17:88:01:00:00:00:01", 0x1001, bulb_eps)
@@ -247,7 +247,7 @@ def zigbee():
         return group
     gateway.async_create_zigpy_group = create_group
     app.bulb1, app.bulb2, app.dial = bulb1, bulb2, dial
-    with patch("custom_components.zha_scenes.zigbee.get_zha_gateway", return_value=gateway), \
+    with patch("custom_components.hue_remote_scenes.zigbee.get_zha_gateway", return_value=gateway), \
          patch("homeassistant.components.panel_custom.async_register_panel"), \
          patch("homeassistant.components.frontend.async_remove_panel"):
         yield app
@@ -263,7 +263,7 @@ async def auto_enable(hass, enable_custom_integrations):
 
 
 async def _setup(hass) -> MockConfigEntry:
-    entry = MockConfigEntry(domain=DOMAIN, title="ZHA Scenes", data={})
+    entry = MockConfigEntry(domain=DOMAIN, title="Hue Remote Scenes", data={})
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -299,14 +299,14 @@ async def test_scenes(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
         await client.send_json({"id": msg_id, **msg})
         return await client.receive_json()
 
-    r = await ws(1, type="zha_scenes/groups")
+    r = await ws(1, type="hue_remote_scenes/groups")
     assert r["success"], r
     (group,) = r["result"]["groups"]
     assert group["id"] == GROUP and group["name"] == "Living room" and group["scenes"] == []
     assert [(m["name"], m["scenes"]) for m in group["members"]] == [("Lamp 1", True), ("Lamp 2", True), ("Plug", False)]
 
     # Store: unicast to each bulb (not the plug), entity appears.
-    r = await ws(2, type="zha_scenes/store", group_id=GROUP, name="Relax")
+    r = await ws(2, type="hue_remote_scenes/store", group_id=GROUP, name="Relax")
     assert r["success"], r
     assert r["result"] == {"scene_id": 1, "ok": sorted([_m(app.bulb1), _m(app.bulb2)]), "failed": {}}
     stores = app.frames(str(app.bulb1.ieee)) + app.frames(str(app.bulb2.ieee))
@@ -319,7 +319,7 @@ async def test_scenes(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     # Change the lights, store a second scene with one bulb unreachable: partial success is reported.
     app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 30, "color_temperature": 450}
     app.unreachable.add(app.bulb2.ieee)
-    r = await ws(3, type="zha_scenes/store", group_id=GROUP, name="Night")
+    r = await ws(3, type="hue_remote_scenes/store", group_id=GROUP, name="Night")
     assert r["result"]["scene_id"] == 2 and r["result"]["failed"] == {_m(app.bulb2): "no answer"}
     app.unreachable.clear()
 
@@ -337,30 +337,30 @@ async def test_scenes(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     assert len(reads) == 3  # on/off, level, color
 
     # Rename, then re-save over scene 1.
-    r = await ws(4, type="zha_scenes/rename", group_id=GROUP, scene_id=1, name="Evening")
+    r = await ws(4, type="hue_remote_scenes/rename", group_id=GROUP, scene_id=1, name="Evening")
     assert r["success"]
     await hass.async_block_till_done()
     assert hass.states.get("scene.living_room_relax").name == "Living room Evening"
-    r = await ws(5, type="zha_scenes/store", group_id=GROUP, scene_id=1)
+    r = await ws(5, type="hue_remote_scenes/store", group_id=GROUP, scene_id=1)
     assert r["result"]["scene_id"] == 1 and len(r["result"]["ok"]) == 2
 
     # Delete scene 2: bulb2 never had it ("not found" isn't a failure). Entity goes away.
-    r = await ws(6, type="zha_scenes/delete", group_id=GROUP, scene_id=2)
+    r = await ws(6, type="hue_remote_scenes/delete", group_id=GROUP, scene_id=2)
     assert r["success"] and r["result"]["failed"] == {}
     await hass.async_block_till_done()
     assert hass.states.get("scene.living_room_night") is None
     assert (GROUP, 2) not in app.scenes[app.bulb1.ieee]
 
     # Errors.
-    r = await ws(7, type="zha_scenes/recall", group_id=GROUP, scene_id=99)
+    r = await ws(7, type="hue_remote_scenes/recall", group_id=GROUP, scene_id=99)
     assert not r["success"] and r["error"]["code"] == "invalid"
-    r = await ws(8, type="zha_scenes/store", group_id=GROUP, name="  ")
+    r = await ws(8, type="hue_remote_scenes/store", group_id=GROUP, name="  ")
     assert r["error"]["code"] == "invalid"
     app.unreachable |= {app.bulb1.ieee, app.bulb2.ieee}
-    r = await ws(9, type="zha_scenes/store", group_id=GROUP, name="Nope")
+    r = await ws(9, type="hue_remote_scenes/store", group_id=GROUP, name="Nope")
     assert not r["success"] and "No light saved the scene" in r["error"]["message"]
     app.unreachable.clear()
-    r = await ws(10, type="zha_scenes/groups")
+    r = await ws(10, type="hue_remote_scenes/groups")
     assert [s["id"] for s in r["result"]["groups"][0]["scenes"]] == [1]
 
 
@@ -378,12 +378,12 @@ async def test_import_scenes_made_elsewhere(hass: HomeAssistant, zigbee, hass_ws
     # Import again with both answering: members refresh, names are kept.
     app.unreachable.clear()
     client = await hass_ws_client(hass)
-    await client.send_json({"id": 1, "type": "zha_scenes/rename", "group_id": GROUP, "scene_id": 3, "name": "Bright"})
+    await client.send_json({"id": 1, "type": "hue_remote_scenes/rename", "group_id": GROUP, "scene_id": 3, "name": "Bright"})
     await client.receive_json()
-    await client.send_json({"id": 2, "type": "zha_scenes/import", "group_id": GROUP})
+    await client.send_json({"id": 2, "type": "hue_remote_scenes/import", "group_id": GROUP})
     r = await client.receive_json()
     assert r["result"]["added"] == []
-    await client.send_json({"id": 3, "type": "zha_scenes/groups"})
+    await client.send_json({"id": 3, "type": "hue_remote_scenes/groups"})
     r = await client.receive_json()
     scenes = {s["id"]: s for s in r["result"]["groups"][0]["scenes"]}
     assert scenes[3]["name"] == "Bright" and scenes[3]["members"] == sorted([_m(app.bulb1), _m(app.bulb2)])
@@ -409,13 +409,13 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
         await client.send_json({"id": msg_id, **msg})
         return await client.receive_json()
 
-    r = await ws(1, type="zha_scenes/remotes")
+    r = await ws(1, type="hue_remote_scenes/remotes")
     assert r["result"]["remotes"] == [{
         "ieee": str(app.dial.ieee), "name": "Tap dial", "model": "RDM002", "manufacturer": "Signify",
         "battery": True, "endpoints": [{"id": 1, "clusters": [6, 8, 5]}],
         "area": None, "bound": [], "checked": None, "dial_supported": True, "dial": None}]
 
-    r = await ws(2, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP)
+    r = await ws(2, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP)
     assert r["success"], r
     assert r["result"]["results"] == {"6": "ok", "8": "ok", "5": "ok"}
     binds = app.frames(f"zdo:{app.dial.ieee}")
@@ -423,19 +423,19 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
         (zdo_t.ZDOCmd.Bind_req, 1, cl, 1, GROUP) for cl in (6, 8, 5)]
 
     # Binding table read pages through (2 per page here).
-    r = await ws(3, type="zha_scenes/bindings", ieee=str(app.dial.ieee))
+    r = await ws(3, type="hue_remote_scenes/bindings", ieee=str(app.dial.ieee))
     assert r["result"]["bindings"] == [{"endpoint": 1, "cluster": c, "group_id": GROUP} for c in (5, 6, 8)]
 
-    r = await ws(4, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[8], unbind=True)
+    r = await ws(4, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[8], unbind=True)
     assert r["result"]["results"] == {"8": "ok"}
-    r = await ws(5, type="zha_scenes/bindings", ieee=str(app.dial.ieee))
+    r = await ws(5, type="hue_remote_scenes/bindings", ieee=str(app.dial.ieee))
     assert [b["cluster"] for b in r["result"]["bindings"]] == [5, 6]
 
     # Asleep remote.
     app.unreachable.add(app.dial.ieee)
-    r = await ws(6, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[6])
+    r = await ws(6, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[6])
     assert r["result"]["results"] == {"6": "no answer"}
-    r = await ws(7, type="zha_scenes/bindings", ieee=str(app.dial.ieee))
+    r = await ws(7, type="hue_remote_scenes/bindings", ieee=str(app.dial.ieee))
     assert not r["success"] and "Press a button" in r["error"]["message"]
 
 
@@ -457,35 +457,35 @@ async def test_areas_and_remembered_bindings(hass: HomeAssistant, zigbee, hass_w
         return await client.receive_json()
 
     # Area from the members; no remotes known yet.
-    (group,) = (await ws(1, type="zha_scenes/groups"))["result"]["groups"]
+    (group,) = (await ws(1, type="hue_remote_scenes/groups"))["result"]["groups"]
     assert group["areas"] == ["Lounge"] and group["remotes"] == []
-    (remote,) = (await ws(2, type="zha_scenes/remotes"))["result"]["remotes"]
+    (remote,) = (await ws(2, type="hue_remote_scenes/remotes"))["result"]["remotes"]
     assert remote["area"] == "Hall" and remote["bound"] == [] and remote["checked"] is None
 
     # Binding is remembered without reading the table.
-    await ws(3, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[6, 8])
-    (group,) = (await ws(4, type="zha_scenes/groups"))["result"]["groups"]
+    await ws(3, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, clusters=[6, 8])
+    (group,) = (await ws(4, type="hue_remote_scenes/groups"))["result"]["groups"]
     assert group["remotes"] == [{"ieee": str(app.dial.ieee), "name": "Tap dial", "clusters": [6, 8]}]
-    (remote,) = (await ws(5, type="zha_scenes/remotes"))["result"]["remotes"]
+    (remote,) = (await ws(5, type="hue_remote_scenes/remotes"))["result"]["remotes"]
     assert remote["bound"] == [{"group_id": GROUP, "clusters": [6, 8]}] and remote["checked"] is None
 
     # Reading the table replaces what we remember (here: something else added scenes) and sets checked.
     app.bindings[app.dial.ieee].append(zdo_t.Binding(
         SrcAddress=app.dial.ieee, SrcEndpoint=1, ClusterId=5, DstAddress=zdo_t.MultiAddress(addrmode=1, nwk=GROUP)))
-    await ws(6, type="zha_scenes/bindings", ieee=str(app.dial.ieee))
-    (remote,) = (await ws(7, type="zha_scenes/remotes"))["result"]["remotes"]
+    await ws(6, type="hue_remote_scenes/bindings", ieee=str(app.dial.ieee))
+    (remote,) = (await ws(7, type="hue_remote_scenes/remotes"))["result"]["remotes"]
     assert remote["bound"] == [{"group_id": GROUP, "clusters": [5, 6, 8]}] and remote["checked"]
 
     # Unbinding everything drops the group.
-    await ws(8, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, unbind=True)
-    (group,) = (await ws(9, type="zha_scenes/groups"))["result"]["groups"]
+    await ws(8, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, unbind=True)
+    (group,) = (await ws(9, type="hue_remote_scenes/groups"))["result"]["groups"]
     assert group["remotes"] == []
 
     # An area set on ZHA's group entity wins over the members' areas.
     entities = er.async_get(hass)
     ent = entities.async_get_or_create("light", "zha", f"light_zha_group_0x{GROUP:04x}", config_entry=zha_entry)
     entities.async_update_entity(ent.entity_id, area_id=hall.id)
-    (group,) = (await ws(10, type="zha_scenes/groups"))["result"]["groups"]
+    (group,) = (await ws(10, type="hue_remote_scenes/groups"))["result"]["groups"]
     assert group["areas"] == ["Hall"]
 
 
@@ -504,8 +504,8 @@ async def test_dial_setup(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
 
     # 1. Find the dial's group: wait for a press. The first press only wakes it (its
     #    Scenes cluster isn't bound to the coordinator yet), the next one is seen.
-    with patch("custom_components.zha_scenes.zigbee.BIND_RETRY", 0):
-        await client.send_json({"id": 1, "type": "zha_scenes/find_dial_group", "ieee": str(app.dial.ieee)})
+    with patch("custom_components.hue_remote_scenes.zigbee.BIND_RETRY", 0):
+        await client.send_json({"id": 1, "type": "hue_remote_scenes/find_dial_group", "ieee": str(app.dial.ieee)})
         scenes_out = app.dial.endpoints[1].out_clusters[Scenes.cluster_id]
 
         async def until(check):
@@ -525,36 +525,36 @@ async def test_dial_setup(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     coordinator_binds = [b for b in app.bindings[app.dial.ieee] if b.DstAddress.addrmode == 3]
     assert [(b.ClusterId, b.DstAddress.endpoint) for b in coordinator_binds] == [(5, 1)]
 
-    (remote,) = (await ws(2, type="zha_scenes/remotes"))["result"]["remotes"]
+    (remote,) = (await ws(2, type="hue_remote_scenes/remotes"))["result"]["remotes"]
     assert remote["dial"] == {"group_id": DIAL_GROUP, "buttons": [["1 dot", 1], ["2 dots", 0], ["3 dots", 5], ["4 dots", 4]]}
 
     # 2. Create a ZHA group with exactly that id, with both bulbs.
-    lights = (await ws(3, type="zha_scenes/lights"))["result"]["lights"]
+    lights = (await ws(3, type="hue_remote_scenes/lights"))["result"]["lights"]
     assert [l["name"] for l in lights] == ["Lamp 1", "Lamp 2"]  # not the plug (no scenes), dial or coordinator
-    r = await ws(4, type="zha_scenes/create_group", group_id=DIAL_GROUP, name="Lounge dial",
+    r = await ws(4, type="hue_remote_scenes/create_group", group_id=DIAL_GROUP, name="Lounge dial",
                  members=[l["key"] for l in lights])
     assert r["success"], r
-    groups = {g["id"]: g for g in (await ws(5, type="zha_scenes/groups"))["result"]["groups"]}
+    groups = {g["id"]: g for g in (await ws(5, type="hue_remote_scenes/groups"))["result"]["groups"]}
     dial_group = groups[DIAL_GROUP]
     assert dial_group["name"] == "Lounge dial" and len(dial_group["members"]) == 2
     assert dial_group["dials"] == [{"ieee": str(app.dial.ieee), "name": "Tap dial", "buttons": [
         {"label": "1 dot", "scene_id": 1}, {"label": "2 dots", "scene_id": 0},
         {"label": "3 dots", "scene_id": 5}, {"label": "4 dots", "scene_id": 4}]}]
     # Running it again just adds missing members.
-    assert (await ws(6, type="zha_scenes/create_group", group_id=DIAL_GROUP, name="Lounge dial", members=[lights[0]["key"]]))["success"]
+    assert (await ws(6, type="hue_remote_scenes/create_group", group_id=DIAL_GROUP, name="Lounge dial", members=[lights[0]["key"]]))["success"]
 
     # 3. Save button scenes at the button's ids (2 dots = scene 0).
     app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 254}
-    r = await ws(7, type="zha_scenes/store", group_id=DIAL_GROUP, scene_id=0, name="Bright")
+    r = await ws(7, type="hue_remote_scenes/store", group_id=DIAL_GROUP, scene_id=0, name="Bright")
     assert r["success"] and r["result"]["scene_id"] == 0
     app.state[app.bulb1.ieee] = {"on_off": 1, "current_level": 20}
-    await ws(8, type="zha_scenes/store", group_id=DIAL_GROUP, scene_id=1, name="Dim")
+    await ws(8, type="hue_remote_scenes/store", group_id=DIAL_GROUP, scene_id=1, name="Dim")
     # A plain new scene in a dial's group skips the button ids.
-    r = await ws(9, type="zha_scenes/store", group_id=DIAL_GROUP, name="Extra")
+    r = await ws(9, type="hue_remote_scenes/store", group_id=DIAL_GROUP, name="Extra")
     assert r["result"]["scene_id"] == 2
 
     # 4. Bind the dial to its group; then the button recalls the scene on the lights, no HA involved.
-    r = await ws(10, type="zha_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=DIAL_GROUP)
+    r = await ws(10, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=DIAL_GROUP)
     assert r["result"]["results"] == {"6": "ok", "8": "ok", "5": "ok"}
     app.press(app.dial, 0, DIAL_GROUP)  # 2 dots
     assert app.state[app.bulb1.ieee]["current_level"] == 254
@@ -565,7 +565,19 @@ async def test_dial_setup(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
 async def test_find_dial_group_times_out(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     await _setup(hass)
     client = await hass_ws_client(hass)
-    with patch("custom_components.zha_scenes.zigbee.BIND_RETRY", 0):
-        await client.send_json({"id": 1, "type": "zha_scenes/find_dial_group", "ieee": str(zigbee.dial.ieee), "timeout": 5})
+    with patch("custom_components.hue_remote_scenes.zigbee.BIND_RETRY", 0):
+        await client.send_json({"id": 1, "type": "hue_remote_scenes/find_dial_group", "ieee": str(zigbee.dial.ieee), "timeout": 5})
         r = await client.receive_json()
     assert not r["success"] and "Didn't see a button press" in r["error"]["message"]
+
+
+async def test_imports_data_saved_before_the_rename(hass: HomeAssistant, zigbee, hass_storage) -> None:
+    """Scenes, bindings and dial set-up saved as ZHA Scenes (.storage/zha_scenes) come across."""
+    hass_storage["zha_scenes"] = {"version": 1, "minor_version": 1, "key": "zha_scenes", "data": {
+        "groups": {str(GROUP): {"3": {"name": "Movie", "members": []}}},
+        "remotes": {str(zigbee.dial.ieee): {"groups": {str(GROUP): [6, 8]}, "checked": None,
+                                            "dial": {"group_id": GROUP, "buttons": [["1 dot", 1]]}}}}}
+    await _setup(hass)
+    assert hass.states.get("scene.living_room_movie") is not None
+    await hass.async_block_till_done()
+    assert hass_storage[DOMAIN]["data"]["remotes"][str(zigbee.dial.ieee)]["dial"]["group_id"] == GROUP

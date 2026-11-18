@@ -8,7 +8,7 @@ import type { Hass } from "./types";
  * `route` and `panel` as properties. `hass` is reassigned on every state
  * change, so we keep it in a getter instead of re-rendering on each update.
  */
-class ZhaScenesPanel extends HTMLElement {
+class HueRemoteScenesPanel extends HTMLElement {
   private _hass?: Hass;
   private _narrow = false;
   private _root?: Root;
@@ -60,6 +60,6 @@ class ZhaScenesPanel extends HTMLElement {
   }
 }
 
-if (!customElements.get("zha-scenes-panel")) {
-  customElements.define("zha-scenes-panel", ZhaScenesPanel);
+if (!customElements.get("hue-remote-scenes-panel")) {
+  customElements.define("hue-remote-scenes-panel", HueRemoteScenesPanel);
 }

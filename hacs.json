@@ -1,5 +1,5 @@
 {
-  "name": "ZHA Scenes",
+  "name": "Hue Remote Scenes",
   "render_readme": true,
   "homeassistant": "2025.1.0"
 }
