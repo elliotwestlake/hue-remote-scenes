@@ -1,0 +1,31 @@
+store_scene:
+  fields:
+    group_id:
+      required: true
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 65527
+          mode: box
+    name:
+      example: Relax
+      selector:
+        text:
+    scene_id:
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+import_scenes:
+  fields:
+    group_id:
+      required: true
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 65527
+          mode: box

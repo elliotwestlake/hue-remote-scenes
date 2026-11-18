@@ -1,0 +1,10 @@
+{
+  "services": {
+    "store_scene": {
+      "service": "mdi:content-save-outline"
+    },
+    "import_scenes": {
+      "service": "mdi:database-import-outline"
+    }
+  }
+}

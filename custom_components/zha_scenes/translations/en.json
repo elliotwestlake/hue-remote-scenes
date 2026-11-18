@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ZHA Scenes",
+        "description": "Adds a Zigbee scenes panel to the sidebar, and a scene entity for each scene you save. Your ZHA groups are used as they are."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "ZHA Scenes is already set up.",
+      "no_zha": "ZHA isn't set up in Home Assistant. Set it up first."
+    }
+  },
+  "services": {
+    "store_scene": {
+      "name": "Store scene",
+      "description": "Save the group's lights as they are now into a Zigbee scene on each light. Give a name for a new scene, or a scene ID to overwrite one.",
+      "fields": {
+        "group_id": {
+          "name": "Group ID",
+          "description": "The ZHA group's ID (shown in the Zigbee scenes panel)."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Name for a new scene."
+        },
+        "scene_id": {
+          "name": "Scene ID",
+          "description": "An existing scene to overwrite with the current state."
+        }
+      }
+    },
+    "import_scenes": {
+      "name": "Import scenes",
+      "description": "Ask the group's lights which scenes they already have (for example, ones made in Zigbee2MQTT) and add any that are missing.",
+      "fields": {
+        "group_id": {
+          "name": "Group ID",
+          "description": "The ZHA group's ID."
+        }
+      }
+    }
+  }
+}
