@@ -50,5 +50,6 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
 
 ## Conventions
 
+- **Shipping an update:** bump `version` in `manifest.json` (semver), push, then `gh release create vX.Y.Z --target main` with short notes. The Marketplace (formerly HACS) offers updates from GitHub releases; without a new release, **Update** stays greyed out and users can only Redownload.
 - Python: HA style, type hints, `from __future__ import annotations`. Keep `logic.py` free of HA and zigpy imports.
 - Run `pytest -q tests`, the `tests_ha` suite and `cd frontend && npm run build` before committing, and commit the rebuilt bundle.
