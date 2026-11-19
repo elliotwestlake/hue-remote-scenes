@@ -1,8 +1,7 @@
 import { Icon } from "./Icon";
 import { lightCount, lightsOn, remoteStatus, type Area } from "./model";
-import { remoteIcon } from "./RemoteCard";
 import { SceneChip } from "./Scenes";
-import { dots, plural, type Group, type Hass } from "./types";
+import { dots, type Group, type Hass } from "./types";
 import { useAction } from "./useAction";
 
 interface Props {
@@ -37,6 +36,7 @@ function AreaCard({ getHass, area, groups, onOpen, onSetup }: CardProps) {
   const hass = getHass();
   const lights = lightCount(area.groups);
   const on = lightsOn(hass, area.groups);
+  const several = area.groups.length > 1; // then label each group's scenes
 
   const recall = (g: Group, sid: number, name: string) =>
     act(async () => {
@@ -49,14 +49,7 @@ function AreaCard({ getHass, area, groups, onOpen, onSetup }: CardProps) {
       <div className="card-head">
         <div className="title">
           <Icon name={area.icon} className="title-icon" />
-          <div>
-            <h2>{area.name}</h2>
-            <div className="muted small">
-              {[area.groups.length ? plural(area.groups.length, "group") : null, lights ? plural(lights, "light") : null, area.remotes.length ? null : "no remote"]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-          </div>
+          <h2>{area.name}</h2>
         </div>
         {lights > 0 && (
           <span className={`chip ${on ? "on" : ""}`}>
@@ -66,52 +59,46 @@ function AreaCard({ getHass, area, groups, onOpen, onSetup }: CardProps) {
         )}
       </div>
 
-      {area.attention.map((r) => (
-        <div key={r.ieee} className="status warn row">
-          <Icon name="alert-outline" />
-          <span className="grow">{r.name} needs setting up</span>
-          <button className="primary" onClick={() => onSetup(r.ieee)}>Set up</button>
+      {area.groups.some((g) => g.scenes.length) ? (
+        <div className="chips">
+          {area.groups.map((g) => {
+            const slots = new Map(g.dials.flatMap((d) => d.buttons.map((b) => [b.scene_id, dots(b.label)] as const)));
+            // A remote's button scenes first, in button order, then the rest.
+            const order = (id: number) => (slots.has(id) ? [...slots.keys()].indexOf(id) : 100 + id);
+            const scenes = [...g.scenes].sort((a, b) => order(a.id) - order(b.id));
+            return [
+              several && scenes.length && g.name !== area.name ? <span key={`${g.id}-label`} className="chips-label muted small">{g.name}</span> : null,
+              ...scenes.map((s) => (
+                <SceneChip key={`${g.id}-${s.id}`} scene={s} badge={slots.get(s.id)} disabled={!!busy} onRecall={() => recall(g, s.id, s.name)} />
+              )),
+            ];
+          })}
         </div>
-      ))}
-
-      {area.remotes
-        .filter((r) => !area.attention.includes(r))
-        .map((r) => {
-          const s = remoteStatus(r, groups);
-          return (
-            <div key={r.ieee} className="remote-line">
-              <Icon name={remoteIcon(r)} />
-              <strong className="grow">{r.name}</strong>
-              <span className={`chip ${s.state === "ok" ? "ok" : ""}`}>{s.label}</span>
-            </div>
-          );
-        })}
-
-      {area.groups.map((g) => {
-        const slots = new Map(g.dials.flatMap((d) => d.buttons.map((b) => [b.scene_id, dots(b.label)] as const)));
-        // A remote's button scenes first, in button order, then the rest.
-        const order = (id: number) => (slots.has(id) ? [...slots.keys()].indexOf(id) : 100 + id);
-        const scenes = [...g.scenes].sort((a, b) => order(a.id) - order(b.id));
-        return (
-          <div key={g.id} className="stack-sm">
-            <h3>{g.name}</h3>
-            {scenes.length ? (
-              <div className="chips">
-                {scenes.map((s) => (
-                  <SceneChip key={s.id} scene={s} badge={slots.get(s.id)} disabled={!!busy} onRecall={() => recall(g, s.id, s.name)} />
-                ))}
-              </div>
-            ) : (
-              <span className="muted small">No scenes yet.</span>
-            )}
-          </div>
-        );
-      })}
+      ) : (
+        <span className="muted small">{area.groups.length ? "No scenes yet." : "No groups here yet."}</span>
+      )}
 
       <div className="card-actions">
-        <span className="spacer" />
+        <span className="grow remote-summary small">
+          {area.remotes.length
+            ? area.remotes.map((r, i) => {
+                const s = remoteStatus(r, groups);
+                const text = `${r.name} · ${s.state === "attention" ? "needs setting up" : s.label.toLowerCase()}`;
+                return (
+                  <span key={r.ieee}>
+                    {i > 0 && ", "}
+                    {s.state === "attention" ? (
+                      <button className="link warn-link" onClick={() => onSetup(r.ieee)}>{text}</button>
+                    ) : (
+                      <span className="muted">{text}</span>
+                    )}
+                  </span>
+                );
+              })
+            : <span className="muted">No remote</span>}
+        </span>
         <button className="ghost" onClick={onOpen}>
-          {area.groups.length ? "Scenes" : "More"} <Icon name="chevron-right" />
+          Manage <Icon name="chevron-right" />
         </button>
       </div>
 

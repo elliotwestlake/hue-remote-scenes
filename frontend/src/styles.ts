@@ -115,6 +115,9 @@ select, input[type=text] { font: inherit; font-size: 14px; padding: 8px 10px; bo
 .remote-line .icon-wrap { --mdc-icon-size: 18px; }
 .remote-line strong { color: var(--primary-text-color); font-weight: 500; }
 .scene-chip { padding: 6px 14px 6px 8px; }
+.chips-label { flex-basis: 100%; margin: 4px 0 -2px; }
+.remote-summary { line-height: 1.5; }
+button.link.warn-link { color: var(--hl-warn); font-size: 12px; text-align: left; }
 .scene-chip .badge { font-size: 9px; letter-spacing: 1px; color: var(--secondary-text-color); }
 .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
 .crumbs { display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--secondary-text-color); }

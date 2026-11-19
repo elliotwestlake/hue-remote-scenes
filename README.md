@@ -50,14 +50,14 @@ You need ZHA groups first: **Settings → Devices & services → Zigbee Home Aut
 
 ## The panel
 
-- **Areas** shows a card per area: its remotes, how many lights are on, and each group's scenes with a dot in the colours they were saved with. Tap a scene to recall it. Areas with a remote that needs setting up come first.
-- **Scenes ›** on an area's card opens it, to save, rename, overwrite and delete scenes, next to the remotes in that area.
+- **Areas** shows a simple card per area: whether its lights are on, its scenes with a dot in the colours they were saved with (tap one to recall it), and a line saying how its remotes are doing. Areas with a remote that needs setting up come first.
+- **Manage ›** on an area's card opens it, to save, rename, overwrite and delete scenes, next to the remotes in that area.
 - **Remotes** shows what each remote does (a Tap Dial's button scenes, or the groups a dimmer controls), its battery and when its bindings were last checked.
 
 ## Scenes
 
 1. Set the group's lights to the look you want (from HA or the remotes).
-2. Open the area (**Scenes ›**), type a name under the group's scenes and press **Save current state**.
+2. Open the area (**Manage ›**), type a name under the group's scenes and press **Save current state**.
 3. Recall it with ▶ or by tapping it on the area's card, with `scene.turn_on` on its entity (which supports `transition`), or from a bound remote.
 
 The panel says which lights saved it. A light that was off the network when you saved gets flagged "on 2 of 3 lights"; use the save button on its row to save it again. Delete removes the scene from the lights too. A scene's colour shows what the lights looked like when it was saved; imported scenes show grey until you save them again.
