@@ -9,7 +9,7 @@ hue_remote_scenes/delete  {group_id, scene_id}
 hue_remote_scenes/import  {group_id}                         -> scenes the lights already have
 hue_remote_scenes/remotes                                   -> remotes, their area, battery and remembered bindings
 hue_remote_scenes/bindings {ieee}                            -> the remote's group bindings (must be awake)
-hue_remote_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?}
+hue_remote_scenes/bind    {ieee, endpoint, group_id, clusters?, unbind?, exclusive?}
 hue_remote_scenes/find_dial_group {ieee}                     -> the group a dial recalls scenes on (needs a button press)
 hue_remote_scenes/lights                                    -> lights that can join a group, with their area
 hue_remote_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
@@ -27,6 +27,7 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
@@ -41,6 +42,8 @@ from .logic import (
     cycle_trigger,
     dial_buttons,
     group_bindings,
+    remove_entries,
+    stale_bindings,
 )
 from .manager import SceneManager
 
@@ -246,6 +249,8 @@ async def ws_bindings(hass, connection, msg, manager: SceneManager):
         vol.Required("endpoint"): vol.Coerce(int),
         vol.Optional("clusters", default=list(REMOTE_CLUSTERS)): [vol.In(REMOTE_CLUSTERS)],
         vol.Optional("unbind", default=False): bool,
+        # After binding, remove the remote's other bindings (other groups, other devices).
+        vol.Optional("exclusive", default=False): bool,
     }
     | GROUP
 )
@@ -265,7 +270,33 @@ async def ws_bind(hass, connection, msg, manager: SceneManager):
         msg["ieee"],
         apply_bind_results(known, msg["group_id"], results, unbind=msg["unbind"]),
     )
-    return {"results": {str(c): r for c, r in results.items()}}
+    out: dict[str, Any] = {"results": {str(c): r for c, r in results.items()}}
+    if msg["exclusive"] and not msg["unbind"] and "ok" in results.values():
+        out |= await _remove_other_bindings(hass, manager, msg["ieee"], msg["group_id"])
+    return out
+
+
+async def _remove_other_bindings(
+    hass: HomeAssistant, manager: SceneManager, ieee: str, group_id: int
+) -> dict[str, Any]:
+    """Unbind everything but group_id, the remote's dial group and the coordinator.
+    The remote is awake: it just answered the bind."""
+    try:
+        table = await zigbee.async_binding_table(hass, ieee)
+    except HomeAssistantError as err:
+        return {"removed": [], "remove_failed": [], "table_error": str(err)}
+    keep = {int(group_id)}
+    if dial := manager.store.dial(ieee):
+        keep.add(int(dial["group_id"]))  # its scene buttons need their own group
+    stale = stale_bindings(table, keep, zigbee.coordinator_ieee(hass))
+    removed, failed = await zigbee.async_unbind_entries(hass, ieee, stale)
+    # We've just seen the whole table, so remember it as checked.
+    await manager.store.async_set_remote(
+        ieee,
+        bindings_by_group(group_bindings(remove_entries(table, removed))),
+        checked=dt_util.utcnow().isoformat(),
+    )
+    return {"removed": removed, "remove_failed": failed, "table_error": None}
 
 
 @websocket_api.websocket_command(

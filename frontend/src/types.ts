@@ -74,6 +74,33 @@ export interface Binding {
   group_id: number;
 }
 
+/** A binding table entry: to a group (group_id) or straight to a device (ieee). */
+export interface TableEntry {
+  endpoint: number;
+  cluster: number;
+  group_id: number | null;
+  ieee?: string;
+}
+
+export interface BindResult {
+  results: Record<string, string>;
+  // With exclusive: the remote's other bindings that were removed, or couldn't be.
+  removed?: TableEntry[];
+  remove_failed?: TableEntry[];
+  table_error?: string | null;
+}
+
+/** What a bind with exclusive cleared, as a sentence to append ("" if nothing). */
+export function clearedText(r: BindResult, groupName: (id: number) => string): string {
+  if (r.table_error) return " Couldn't read its other bindings to clear them; press a button and Bind again.";
+  const where = (list: TableEntry[]) =>
+    [...new Set(list.map((e) => (e.group_id != null ? groupName(e.group_id) : "a device directly")))].join(", ");
+  let out = "";
+  if (r.removed?.length) out += ` Removed ${plural(r.removed.length, "old binding")} (${where(r.removed)}).`;
+  if (r.remove_failed?.length) out += ` Couldn't remove ${plural(r.remove_failed.length, "binding")} (${where(r.remove_failed)}); Bind again.`;
+  return out;
+}
+
 export interface StoreResult {
   scene_id: number;
   ok: string[];

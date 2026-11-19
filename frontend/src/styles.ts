@@ -34,8 +34,8 @@ header { position: sticky; top: 0; z-index: 2; background: var(--app-header-back
 .logo { position: relative; width: 26px; height: 26px; flex: none; }
 .logo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .logo-ring { position: absolute; inset: 1px; border-radius: 50%; background: conic-gradient(#ffb020, #ff6a3d, #ff4f8b, #b65cff, #5b6bff, #2f9bff, #19c3c0, #7fd36b, #ffb020); -webkit-mask: radial-gradient(circle, transparent 8.8px, #000 9.4px); mask: radial-gradient(circle, transparent 8.8px, #000 9.4px); }
-.toolbar-row .menu { background: transparent; border: 0; color: inherit; padding: 8px; margin-left: -8px; border-radius: 50%; }
-.toolbar-row .menu:hover { background: rgba(255,255,255,.12); }
+.toolbar-row .menu-btn { display: inline-flex; background: transparent; border: 0; color: inherit; padding: 8px; margin-left: -8px; border-radius: 50%; }
+.toolbar-row .menu-btn:hover { background: rgba(255,255,255,.12); }
 .tabs { display: flex; gap: 2px; padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
 .tabs button { flex: none; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 0; background: transparent; color: inherit; opacity: .72; padding: 12px 14px 10px; border-bottom: 2px solid transparent; font-weight: 500; letter-spacing: .01em; }
 .tabs button:hover { opacity: .95; background: rgba(255,255,255,.06); }

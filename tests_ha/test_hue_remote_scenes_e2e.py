@@ -441,6 +441,46 @@ async def test_remotes_and_binding(hass: HomeAssistant, zigbee, hass_ws_client) 
     assert not r["success"] and "Press a button" in r["error"]["message"]
 
 
+async def test_bind_exclusive_removes_leftovers(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    """Binding with exclusive unbinds other groups and direct device bindings, but keeps the coordinator."""
+    app = zigbee
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    dial = app.dial.ieee
+    coordinator = app.gateway.coordinator_zha_device.ieee
+
+    def binding(cluster, dst, ep=1):
+        return zdo_t.Binding(SrcAddress=dial, SrcEndpoint=ep, ClusterId=cluster, DstAddress=dst)
+
+    old_group = zdo_t.MultiAddress(addrmode=1, nwk=0x2A2A)
+    to_bulb = zdo_t.MultiAddress(addrmode=3, ieee=app.bulb1.ieee, endpoint=11)
+    to_coord = zdo_t.MultiAddress(addrmode=3, ieee=coordinator, endpoint=1)
+    app.bindings[dial] += [binding(6, old_group), binding(8, old_group), binding(6, to_bulb), binding(5, to_coord)]
+
+    r = await ws(1, type="hue_remote_scenes/bind", ieee=str(dial), endpoint=1, group_id=GROUP, exclusive=True)
+    assert r["success"], r
+    assert r["result"]["results"] == {"6": "ok", "8": "ok", "5": "ok"}
+    assert r["result"]["table_error"] is None and r["result"]["remove_failed"] == []
+    assert [(b["cluster"], b["group_id"], b.get("ieee")) for b in r["result"]["removed"]] == [
+        (6, 0x2A2A, None), (8, 0x2A2A, None), (6, None, str(app.bulb1.ieee))]
+    left = sorted((b.ClusterId, b.DstAddress.addrmode) for b in app.bindings[dial])
+    assert left == [(5, 1), (5, 3), (6, 1), (8, 1)]
+
+    (remote,) = (await ws(2, type="hue_remote_scenes/remotes"))["result"]["remotes"]
+    assert remote["bound"] == [{"group_id": GROUP, "clusters": [5, 6, 8]}] and remote["checked"]
+
+    # Without exclusive, nothing else is touched.
+    app.bindings[dial].append(binding(6, old_group))
+    r = await ws(3, type="hue_remote_scenes/bind", ieee=str(dial), endpoint=1, group_id=GROUP, clusters=[6])
+    assert "removed" not in r["result"]
+    assert any(b.DstAddress.addrmode == 1 and b.DstAddress.nwk == 0x2A2A for b in app.bindings[dial])
+
+
 async def test_areas_and_remembered_bindings(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     from homeassistant.helpers import area_registry as ar, device_registry as dr, entity_registry as er
     app = zigbee
@@ -562,6 +602,14 @@ async def test_dial_setup(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     assert app.state[app.bulb1.ieee]["current_level"] == 254
     app.press(app.dial, 1, DIAL_GROUP)  # 1 dot
     assert app.state[app.bulb1.ieee]["current_level"] == 20
+
+    # Binding it to another group too, clearing leftovers, keeps its own scene group.
+    r = await ws(11, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, exclusive=True)
+    assert r["result"]["removed"] == []
+    groups_bound = {b.DstAddress.nwk for b in app.bindings[app.dial.ieee] if b.DstAddress.addrmode == 1}
+    assert groups_bound == {DIAL_GROUP, GROUP}
+    app.press(app.dial, 0, DIAL_GROUP)
+    assert app.state[app.bulb1.ieee]["current_level"] == 254
 
 
 async def test_find_dial_group_times_out(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
