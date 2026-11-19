@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { dialProgress, isOn, NO_AREA, sceneButtons } from "./model";
-import { remoteIcon } from "./RemotePage";
+import { RemoteIcon } from "./RemoteIcon";
 import { AddTile, SceneTile } from "./Tiles";
 import { clearedText, dots, hex, plural, type BindResult, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
 import { useAction } from "./useAction";
@@ -42,7 +42,7 @@ export function DialSetup({ getHass, remote, groups, onChanged, onClose }: Props
     <section className="card remote">
       <div className="card-head">
         <div className="title">
-          <Icon name={remoteIcon(remote)} className="title-icon" />
+          <RemoteIcon remote={remote} className="title-icon" />
           <div>
             <h2>Set up {remote.name}</h2>
             <div className="muted small">Scene buttons that work even when Home Assistant is down</div>

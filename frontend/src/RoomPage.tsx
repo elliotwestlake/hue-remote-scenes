@@ -1,7 +1,7 @@
 import { Icon } from "./Icon";
 import { Brightness, Switch } from "./LightControls";
 import { lightCss, lightsOn, remoteStatus, roomBackground, roomBrightness, roomEntities, isOn, type Area } from "./model";
-import { remoteIcon } from "./RemotePage";
+import { RemoteIcon } from "./RemoteIcon";
 import { AddTile, SceneTile } from "./Tiles";
 import { dots, plural, type Group, type Hass, type StoreResult } from "./types";
 import { useAction } from "./useAction";
@@ -61,7 +61,7 @@ export function RoomPage({ getHass, area, groups, onBack, onOpenRemote, onChange
                 const s = remoteStatus(r, groups);
                 return (
                   <button key={r.ieee} className="list-row" onClick={() => onOpenRemote(r.ieee)}>
-                    <Icon name={remoteIcon(r)} className="row-icon" />
+                    <RemoteIcon remote={r} className="row-icon" />
                     <span className="grow">{r.name}</span>
                     <span className={`chip ${s.state === "ok" ? "ok" : s.state === "attention" ? "warn" : ""}`}>{s.label}</span>
                     <Icon name="chevron-right" />

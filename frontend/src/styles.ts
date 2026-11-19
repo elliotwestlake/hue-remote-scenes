@@ -19,6 +19,7 @@ export const styles = /* css */ `
 }
 * { box-sizing: border-box; }
 .panel { min-height: 100%; background: var(--primary-background-color); }
+.remote-svg { width: var(--mdc-icon-size, 24px); height: var(--mdc-icon-size, 24px); }
 .icon-wrap { display: inline-flex; align-items: center; justify-content: center; line-height: 0; --mdc-icon-size: 20px; }
 .spacer { flex: 1; }
 .grow { flex: 1; min-width: 0; }

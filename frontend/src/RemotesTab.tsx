@@ -1,6 +1,6 @@
 import { Icon } from "./Icon";
 import { modelName, remoteStatus, type RemoteState } from "./model";
-import { remoteIcon } from "./RemotePage";
+import { RemoteIcon } from "./RemoteIcon";
 import type { Group, Hass, Remote } from "./types";
 
 interface Props {
@@ -36,7 +36,7 @@ export function RemotesTab({ getHass, remotes, groups, onOpen }: Props) {
           .join(" · ");
         return (
           <button key={r.ieee} className="list-row" onClick={() => onOpen(r.ieee)}>
-            <Icon name={remoteIcon(r)} className="row-icon big" />
+            <RemoteIcon remote={r} className="row-icon big" />
             <span className="grow">
               <strong>{r.name}</strong>
               <span className="muted small row-detail">{sub}</span>

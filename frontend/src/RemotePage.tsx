@@ -2,13 +2,11 @@ import { useState } from "react";
 import { CycleSection } from "./CycleSection";
 import { DialSetup } from "./DialSetup";
 import { Icon } from "./Icon";
+import { RemoteIcon } from "./RemoteIcon";
 import { ago, dialProgress, isTapDial, modelName, remoteStatus, sceneButtons } from "./model";
 import { swatch } from "./model";
 import { CLUSTER_LABEL, clearedText, dots, hex, plural, type BindResult, type Binding, type Group, type Hass, type Remote, type StoreResult } from "./types";
 import { useAction } from "./useAction";
-
-export const remoteIcon = (r: Remote) =>
-  isTapDial(r) ? "knob" : r.endpoints.some((e) => e.clusters.includes(8)) ? "remote" : "gesture-tap-button";
 
 interface Props {
   getHass: () => Hass;
@@ -41,7 +39,7 @@ export function RemotePage({ getHass, remote, groups, onBack, onChanged }: Props
         <span>{remote.name}</span>
       </nav>
       <div className="dev-head">
-        <Icon name={remoteIcon(remote)} className="dev-icon" />
+        <RemoteIcon remote={remote} className="dev-icon" />
         <div className="grow">
           <h2 className="dev-name">{remote.name}</h2>
           <div className="muted">{sub}</div>
