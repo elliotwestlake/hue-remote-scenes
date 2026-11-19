@@ -30,11 +30,11 @@ export function RemotePage({ getHass, remote, groups, onBack, onChanged }: Props
   const sub = [
     modelName(remote),
     battery != null && battery !== "unavailable" && battery !== "unknown" ? `${Math.round(+battery)}% battery` : null,
-    remote.area,
+    remote.bound.length ? "bound" : "not bound",
   ].filter(Boolean).join(" · ");
 
   return (
-    <main>
+    <main className="narrow">
       <nav className="crumbs">
         <button className="link" onClick={onBack}>Remotes</button>
         <Icon name="chevron-right" />
@@ -43,7 +43,7 @@ export function RemotePage({ getHass, remote, groups, onBack, onChanged }: Props
       <div className="dev-head">
         <Icon name={remoteIcon(remote)} className="dev-icon" />
         <div className="grow">
-          <h1>{remote.name}</h1>
+          <h2 className="dev-name">{remote.name}</h2>
           <div className="muted">{sub}</div>
         </div>
         {dialDone ? (
@@ -127,18 +127,12 @@ function SceneButtons({ getHass, remote, group, busy, act, onChanged, onChangeLi
     }, "Copying the scene in the lights…");
   };
 
-  const tryIt = (sid: number, name: string) =>
-    act(async () => {
-      await getHass().callWS({ type: "hue_remote_scenes/recall", group_id: group.id, scene_id: sid });
-      return `Recalled ${name}`;
-    });
-
   return (
     <>
       <h3>Controls</h3>
       <div className="list">
         <div className="list-row static">
-          <Icon name="lightbulb-group-outline" className="row-icon" />
+          <span className="btn-icon"><Icon name="home-outline" /></span>
           <span className="grow">
             <strong>{group.name}</strong>
             <span className="muted small row-detail">{group.members.map((m) => m.name).join(", ")}</span>
@@ -158,13 +152,10 @@ function SceneButtons({ getHass, remote, group, busy, act, onChanged, onChangeLi
                 <strong>{/^\d/.test(label) ? `Button ${parseInt(label, 10)}` : label}</strong>
                 <span className="muted small row-detail">{scene ? "Recalls this scene" : "Not set yet"}</span>
               </span>
-              {scene && (
-                <button className="round recall" disabled={busy} onClick={() => tryIt(sid, scene.name)} aria-label={`Try ${scene.name}`} title="Try it">
-                  <Icon name="play" />
-                </button>
-              )}
               <label className="picker">
                 <span className="picker-swatch" style={{ background: scene ? swatch(scene.colors) : "var(--hl-off-fill)" }} />
+                <span className="picker-name">{scene?.name ?? "Choose…"}</span>
+                <span className="picker-chev">▾</span>
                 <select
                   value={scene ? sid : ""}
                   disabled={busy}
@@ -188,7 +179,9 @@ function SceneButtons({ getHass, remote, group, busy, act, onChanged, onChangeLi
           <span className="btn-icon"><Icon name={isTapDial(remote) ? "rotate-right" : "brightness-6"} /></span>
           <span className="grow">
             <strong>{isTapDial(remote) ? "Dial" : "Other buttons"}</strong>
-            <span className="muted small row-detail">{sceneButtons(remote).rest} · {group.name}</span>
+            <span className="muted small row-detail">
+              {isTapDial(remote) ? `Dims ${group.name}. Hold any button to turn it off.` : `${sceneButtons(remote).rest} · ${group.name}`}
+            </span>
           </span>
         </div>
       </div>

@@ -19,7 +19,7 @@ export function Switch({ getHass, entities, on, label }: { getHass: () => Hass; 
 }
 
 /** A brightness bar for some light entities; sets the brightness when you let go. */
-export function Brightness({ getHass, entities, value, label }: { getHass: () => Hass; entities: string[]; value: number; label: string }) {
+export function Brightness({ getHass, entities, value, label, fill }: { getHass: () => Hass; entities: string[]; value: number; label: string; fill?: string }) {
   const [v, setV] = useState(value);
   const [dragging, setDragging] = useState(false);
   useEffect(() => {
@@ -42,7 +42,7 @@ export function Brightness({ getHass, entities, value, label }: { getHass: () =>
       value={v}
       aria-label={label}
       disabled={!entities.length}
-      style={{ "--v": `${v}%` } as React.CSSProperties}
+      style={{ "--v": `${v}%`, ...(fill ? { "--fill": fill } : {}) } as React.CSSProperties}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={() => setDragging(true)}
       onChange={(e) => setV(+e.target.value)}

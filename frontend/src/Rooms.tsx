@@ -19,7 +19,7 @@ export function Rooms({ getHass, areas, groups, onOpen, onOpenRemote }: Props) {
       {attention.map((r) => (
         <div key={r.ieee} className="banner">
           <Icon name="alert-outline" />
-          <span className="grow">{r.name} isn't set up yet, so its buttons don't do anything.</span>
+          <span className="grow">{r.name} isn't set up yet: its buttons don't do anything.</span>
           <button className="primary" onClick={() => onOpenRemote(r.ieee)}>Set up</button>
         </div>
       ))}
@@ -50,11 +50,10 @@ function RoomCard({ getHass, area, groups, onOpen }: { getHass: () => Hass; area
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
     >
       <div className="room-top">
-        <Icon name={area.icon} className="room-icon" />
         <div className="grow">
           <h2>{area.name}</h2>
           <div className="room-sub">
-            {lights ? (on ? `${on} of ${plural(lights, "light")} on` : `Off · ${plural(lights, "light")}`) : "No lights in a group yet"}
+            {lights ? (on ? `${plural(on, "light")} on` : `Off · ${plural(lights, "light")}`) : "No lights in a group yet"}
           </div>
         </div>
         {entities.length > 0 && <Switch getHass={getHass} entities={entities} on={on > 0} label={`Turn ${area.name} ${on ? "off" : "on"}`} />}

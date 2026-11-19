@@ -41,7 +41,7 @@ export function RoomPage({ getHass, area, groups, onBack, onOpenRemote, onChange
 
       <main>
         {area.groups.map((g) => (
-          <GroupScenes key={g.id} getHass={getHass} group={g} titled={area.groups.length > 1} onChanged={onChanged} />
+          <GroupScenes key={g.id} getHass={getHass} group={g} titled={area.groups.length > 1 && g.name !== area.name} onChanged={onChanged} />
         ))}
         {!area.groups.length && (
           <div className="empty-state">
@@ -116,7 +116,7 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
 
       {capable.length > 0 && dial && (
         <>
-          <h3>{group.dials.map((d) => d.name).join(", ")} buttons</h3>
+          <h3>{group.dials.map((d) => d.name).join(", ")} buttons <span className="hint">tap to try · ⋮ to save the lights' current state there</span></h3>
           <div className="tiles">
             {dial.buttons.map((b) => {
               const scene = group.scenes.find((s) => s.id === b.scene_id);
@@ -169,7 +169,7 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
       {busy && <div className="status busy">{busy}</div>}
       {result && <div className={`status ${result.kind}`}>{result.text}</div>}
 
-      <h3>Lights</h3>
+      <h3>Lights <span className="hint">{group.members.filter((m) => isOn(hass, m.entity_id)).length ? `${group.members.filter((m) => isOn(hass, m.entity_id)).length} on` : "all off"}</span></h3>
       <div className="list">
         {group.members.map((m) => {
           const st = m.entity_id ? hass.states[m.entity_id] : undefined;
@@ -183,7 +183,7 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
               </span>
               {m.entity_id && (
                 <>
-                  <Brightness getHass={getHass} entities={[m.entity_id]} value={isOn(hass, m.entity_id) ? Math.round((st?.attributes.brightness ?? 255) / 2.55) : 0} label={`${m.name} brightness`} />
+                  <Brightness getHass={getHass} entities={[m.entity_id]} value={isOn(hass, m.entity_id) ? Math.round((st?.attributes.brightness ?? 255) / 2.55) : 0} label={`${m.name} brightness`} fill={colour ?? undefined} />
                   <Switch getHass={getHass} entities={[m.entity_id]} on={isOn(hass, m.entity_id)} label={`Turn ${m.name} on or off`} />
                 </>
               )}
