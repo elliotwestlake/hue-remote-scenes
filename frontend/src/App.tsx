@@ -67,7 +67,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
       <header>
         <div className="toolbar-row">
           {narrow && (
-            <button className="menu" onClick={onToggleMenu} aria-label="Menu">
+            <button className="menu-btn" onClick={onToggleMenu} aria-label="Menu">
               <Icon name="menu" />
             </button>
           )}
