@@ -74,10 +74,10 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
   else if (area) content = <RoomPage getHass={getHass} area={area} groups={groups} onBack={() => setRoom(null)} onOpenRemote={openRemote} onChanged={reload} />;
   else
     content = (
-      <main>
+      <main className={tab === "remotes" ? "remotes" : undefined}>
         {error && <div className="status error">{error}</div>}
         {tab === "remotes" ? (
-          <RemotesTab getHass={getHass} remotes={remotes} groups={groups} onOpen={setRemoteId} />
+          <RemotesTab getHass={getHass} areas={areas} groups={groups} onOpen={setRemoteId} />
         ) : areas.length ? (
           <Rooms getHass={getHass} areas={areas} groups={groups} onOpen={setRoom} onOpenRemote={openRemote} />
         ) : (

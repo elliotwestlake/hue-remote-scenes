@@ -52,7 +52,7 @@ You need ZHA groups first: **Settings → Devices & services → Zigbee Home Aut
 
 - **Rooms** shows a card per Home Assistant area, tinted with the colours its lights are showing, with an on/off switch and a brightness bar (they control ZHA's group light). A banner flags any remote that isn't set up yet.
 - **Open a room** to see its scenes as tiles in the colours they were saved with: tap one to recall it, use ⋮ to save the lights' current state over it, rename or delete it, and **Save current state** to add one. Its lights are listed below, each with its own switch and brightness, then the room's remotes.
-- **Remotes** lists every remote. Open one to see what each button does: on a Tap Dial or gen 2 dimmer, pick a scene for each button (or save the lights' current state to it), and try it with ▶.
+- **Remotes** lists every remote by room, each with what it does, small swatches of its button scenes and whether it's set up. Open one to see what each button does: on a Tap Dial or gen 2 dimmer, pick a scene for each button (or save the lights' current state to it), and try it with ▶.
 
 ## Scenes
 

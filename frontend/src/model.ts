@@ -1,6 +1,6 @@
 import type { AreaIcons, Group, Hass, Remote, SceneColor } from "./types";
 
-export const NO_AREA = "No area";
+export const NO_AREA = "No room";
 
 const MODEL_NAMES: Record<string, string> = {
   RDM002: "Hue Tap Dial",

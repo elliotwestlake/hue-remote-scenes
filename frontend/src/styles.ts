@@ -183,6 +183,16 @@ select, input[type=text] { font: inherit; font-size: 14px; padding: 8px 10px; bo
 .scene-chip .badge { font-size: 10px; color: var(--secondary-text-color); }
 .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
 
+/* Remotes by room */
+.remote-room { display: flex; flex-direction: column; gap: 10px; }
+.remote-room + .remote-room { margin-top: 10px; }
+.remote-room-head { display: flex; align-items: center; gap: 10px; }
+.remote-room-head h2 { font-size: 17px; }
+.strip { width: 28px; height: 28px; border-radius: 9px; flex: none; background: var(--hl-off-fill); }
+.mini-swatches { display: flex; gap: 4px; margin-top: 6px; }
+.mini-swatch { width: 22px; height: 22px; border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
+main.remotes { max-width: 860px; }
+
 /* Lists: lights, remotes, buttons */
 .list { background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: var(--hl-radius); overflow: hidden; }
 .list-row { width: 100%; display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--divider-color); border-radius: 0; background: transparent; text-align: left; justify-content: flex-start; }
