@@ -106,3 +106,16 @@ def test_parse_member_key():
     assert L.parse_member_key("00:17:88:01:00:00:00:01/11") == ("00:17:88:01:00:00:00:01", 11)
     with pytest.raises(L.SceneError):
         L.parse_member_key("nonsense")
+
+def test_stale_bindings():
+    coord = "00:12:4b:00:00:00:00:01"
+    ours = {"endpoint": 1, "cluster": 6, "addrmode": 1, "group_id": 5}
+    old_group = {"endpoint": 1, "cluster": 8, "addrmode": 1, "group_id": 0x2A2A}
+    to_coord = {"endpoint": 2, "cluster": 0xFC00, "addrmode": 3, "group_id": None,
+                "ieee": coord.upper(), "dst_endpoint": 1}
+    to_bulb = {"endpoint": 1, "cluster": 6, "addrmode": 3, "group_id": None,
+               "ieee": "00:17:88:01:00:00:00:02", "dst_endpoint": 11}
+    table = [ours, old_group, to_coord, to_bulb]
+    stale = L.stale_bindings(table, 5, coord)
+    assert stale == [old_group, to_bulb]
+    assert L.remove_entries(table, stale) == [ours, to_coord]

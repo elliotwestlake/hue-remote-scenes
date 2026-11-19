@@ -3,7 +3,7 @@ import { Icon } from "./Icon";
 import { dialProgress, isOn, NO_AREA, sceneButtons } from "./model";
 import { remoteIcon } from "./RemoteCard";
 import { NewSceneCard, SceneCard } from "./SceneCard";
-import { dots, hex, plural, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
+import { clearedText, dots, hex, plural, type BindResult, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
 import { useAction } from "./useAction";
 
 interface Props {
@@ -221,25 +221,27 @@ function BindStep({ getHass, remote, group, bound, busy, act, onChanged }: StepP
   const ep = remote.endpoints.find((e) => e.clusters.includes(5)) ?? remote.endpoints[0];
   const bind = () =>
     act(async () => {
-      const r = await getHass().callWS<{ results: Record<string, string> }>({
+      const r = await getHass().callWS<BindResult>({
         type: "hue_remote_scenes/bind",
         ieee: remote.ieee,
         endpoint: ep.id,
         group_id: group.id,
         clusters: ep.clusters,
         unbind: false,
+        exclusive: true, // clear leftovers (other groups, direct device bindings)
       });
       onChanged();
       const failed = Object.entries(r.results).filter(([, v]) => v !== "ok");
       if (failed.length === Object.keys(r.results).length) return "The remote didn't answer. Press one of its buttons and try again.";
-      if (failed.length) return `Bound, but some parts didn't take (${failed.map(([c, v]) => `${c}: ${v}`).join(", ")}). Try again.`;
-      return `Bound to ${group.name}.`;
+      const cleared = clearedText(r, (id) => (id === group.id ? group.name : `Group ${hex(id)}`));
+      if (failed.length) return `Bound, but some parts didn't take (${failed.map(([c, v]) => `${c}: ${v}`).join(", ")}). Try again.${cleared}`;
+      return `Bound to ${group.name}.${cleared}`;
     }, "Waiting for the remote… press one of its buttons.");
   return (
     <div className="step-body">
       <h3 className="title">Bind {remote.name} to {group.name}</h3>
       <p className="muted">
-        Binding makes the remote talk to the lights directly over Zigbee. It's asleep most of the time:{" "}
+        Binding makes the remote talk to the lights directly over Zigbee, and clears any other bindings it has (left over from Z2M, say). It's asleep most of the time:{" "}
         <strong>press one of its buttons</strong>, then press Bind.
       </p>
       <div className="row-start">

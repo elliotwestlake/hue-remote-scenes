@@ -214,3 +214,33 @@ def apply_bind_results(
     else:
         out.pop(key, None)
     return out
+
+
+def stale_bindings(
+    entries: list[dict[str, Any]], group_id: int, coordinator: str
+) -> list[dict[str, Any]]:
+    """Binding table entries to remove once a remote is bound to group_id.
+
+    Everything except bindings to that group and to the coordinator (ZHA binds a
+    remote's clusters there so its presses reach HA, and the dial set-up binds
+    Scenes there): other groups (left over from Z2M or an earlier binding) and
+    direct bindings to other devices (e.g. straight to a bulb).
+    """
+    group_id = int(group_id)
+    coordinator = coordinator.lower()
+    out = []
+    for e in entries:
+        if e.get("addrmode") == 1:
+            if int(e["group_id"]) != group_id:
+                out.append(e)
+        elif e.get("addrmode") == 3:
+            if str(e.get("ieee", "")).lower() != coordinator:
+                out.append(e)
+    return out
+
+
+def remove_entries(
+    entries: list[dict[str, Any]], removed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """entries without the ones in removed (compared by value)."""
+    return [e for e in entries if e not in removed]

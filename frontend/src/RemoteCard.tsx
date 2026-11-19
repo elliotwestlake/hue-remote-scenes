@@ -3,7 +3,7 @@ import { Icon } from "./Icon";
 import { ago, dialProgress, isTapDial, modelName, remoteStatus, sceneButtons } from "./model";
 import { CycleSection } from "./CycleSection";
 import { Swatch } from "./SceneCard";
-import { CLUSTER_LABEL, dots, hex, type Binding, type Group, type Hass, type Remote } from "./types";
+import { CLUSTER_LABEL, clearedText, dots, hex, type BindResult, type Binding, type Group, type Hass, type Remote } from "./types";
 import { useAction } from "./useAction";
 
 interface Props {
@@ -47,13 +47,14 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
 
   const bind = (unbind: boolean) =>
     act(async () => {
-      const r = await getHass().callWS<{ results: Record<string, string> }>({
+      const r = await getHass().callWS<BindResult>({
         type: "hue_remote_scenes/bind",
         ieee: remote.ieee,
         endpoint: ep.id,
         group_id: groupId,
         clusters: ep.clusters,
         unbind,
+        exclusive: !unbind, // clear leftovers (other groups, direct device bindings)
       });
       onChanged();
       const failed = Object.entries(r.results).filter(([, v]) => v !== "ok");
@@ -61,9 +62,9 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
       if (failed.length === Object.keys(r.results).length)
         return "The remote didn't answer. Press a button on it and try again.";
       if (failed.length)
-        return `${verb} ${groupName(groupId)}, but these didn't take: ${failed.map(([c, v]) => `${CLUSTER_LABEL[+c] ?? c} (${v})`).join(", ")}`;
+        return `${verb} ${groupName(groupId)}, but these didn't take: ${failed.map(([c, v]) => `${CLUSTER_LABEL[+c] ?? c} (${v})`).join(", ")}.${clearedText(r, groupName)}`;
       setBinding(false);
-      return `${verb} ${groupName(groupId)}`;
+      return `${verb} ${groupName(groupId)}.${clearedText(r, groupName)}`;
     }, "Waiting for the remote… press one of its buttons.");
 
   const recall = (gid: number, sid: number, name: string) =>
@@ -154,7 +155,7 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
           </select>
           <button className="primary" disabled={!!busy || !groups.length} onClick={() => bind(false)}>Bind</button>
           <button disabled={!!busy || !groups.length} onClick={() => bind(true)}>Unbind</button>
-          <span className="muted small">Sends {ep.clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}</span>
+          <span className="muted small">Sends {ep.clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}. Bind clears its other bindings.</span>
         </div>
       )}
 

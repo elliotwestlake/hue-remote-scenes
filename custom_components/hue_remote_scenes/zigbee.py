@@ -287,11 +287,54 @@ async def async_binding_table(hass: HomeAssistant, ieee: str) -> list[dict[str, 
                     "cluster": int(binding.ClusterId),
                     "addrmode": int(dst.addrmode),
                     "group_id": int(dst.nwk) if dst.addrmode == 1 else None,
+                    **(
+                        {"ieee": str(dst.ieee), "dst_endpoint": int(dst.endpoint)}
+                        if dst.addrmode == 3
+                        else {}
+                    ),
                 }
             )
         index += len(table)
         if not table or index >= total:
             return entries
+
+
+def coordinator_ieee(hass: HomeAssistant) -> str:
+    return str(_gateway(hass).coordinator_zha_device.ieee)
+
+
+async def async_unbind_entries(
+    hass: HomeAssistant, ieee: str, entries: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Unbind binding table entries (from async_binding_table). Returns (removed, failed)."""
+    device = _zigpy_device(hass, ieee)
+    removed: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    for entry in entries:
+        if entry["addrmode"] == 1:
+            destination = zdo_t.MultiAddress(addrmode=1, nwk=entry["group_id"])
+        else:
+            destination = zdo_t.MultiAddress(
+                addrmode=3, ieee=EUI64.convert(entry["ieee"]), endpoint=entry["dst_endpoint"]
+            )
+        try:
+            reply = await device.zdo.request(
+                zdo_t.ZDOCmd.Unbind_req,
+                device.ieee,
+                entry["endpoint"],
+                entry["cluster"],
+                destination,
+            )
+        except ERRORS:
+            failed.append(entry)
+            continue
+        status = reply[0] if reply else None
+        # NO_ENTRY: it's gone already, which is what we wanted.
+        if status in (zdo_t.Status.SUCCESS, zdo_t.Status.NO_ENTRY):
+            removed.append(entry)
+        else:
+            failed.append(entry)
+    return removed, failed
 
 
 SCENES_RECALL = 0x05

@@ -30,6 +30,7 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
 - Remove returning `NOT_FOUND` just means that light never had the scene; it isn't treated as a failure.
 - Bindings: we send ZDO `Bind_req`/`Unbind_req` ourselves (`MultiAddress(addrmode=1, nwk=group_id)`), one cluster at a time, because ZHA's `async_bind_to_group` only logs failures. The binding table is read with `Mgmt_Bind_req`, paged by `StartIndex`.
 - **Remembered bindings:** the binding table lives on the (usually asleep) remote, so we keep `{ieee: {groups: {gid: [clusters]}, checked}}`. Bind/unbind results update it (`logic.apply_bind_results`), and a table read replaces it and sets `checked`. Group cards show the remotes bound to them from this, without waking anything. Bindings made elsewhere only show up after **Check bindings**.
+- **Bind clears leftovers:** the panel binds with `exclusive: true`. Once the bind succeeds (the remote is awake), we read the table and unbind everything except the target group and the coordinator (`logic.stale_bindings`): other groups (Z2M, earlier binds) and direct device bindings (e.g. to a bulb). Coordinator bindings stay, because ZHA's `zha_event`s and the dial's group finder use them. `NO_ENTRY` on unbind counts as removed. The table read also refreshes the remembered bindings and `checked`.
 - **Hue Tap Dial (RDM002) scene buttons:** with its Scenes cluster bound to a group, the dial recalls scenes **1, 0, 5, 4** (buttons 1–4, `logic.DIAL_BUTTONS`) on its **own fixed group id**, directly over Zigbee. Holding a button turns the lights off, and the dial dims (Z2M RDM002 docs). The buttons' Hue-specific `0xFC00` events also reach the coordinator, but that isn't the scene path.
   - `zigbee.async_find_dial_group` binds the dial's Scenes **out** cluster to the coordinator (ZDO Bind_req, addrmode 3, coordinator endpoint 1), retrying every `BIND_RETRY` s while it sleeps, then waits for a recall (`cluster_command` 0x05 on that out cluster) and reads `group_id`. The coordinator binding is left in place (harmless).
   - `zigbee.async_create_group` uses ZHA's `gateway.async_create_zigpy_group(name, members, group_id)` (needs a unique name) or `group.async_add_members`.
@@ -47,7 +48,7 @@ A Home Assistant Marketplace (formerly HACS) custom integration, domain `hue_rem
 
 ## Status
 
-- [x] Backend, scene entities, actions, panel. 15 pure tests, 12 end-to-end tests pass.
+- [x] Backend, scene entities, actions, panel. 16 pure tests, 13 end-to-end tests pass.
 - [x] Hue dimmers: RWL022 Hue button via the dial flow; RWL020/021 and ROM001 scene cycle via HA (`hue_remote_scenes/set_cycle`, `remotes[].cycle_trigger`/`cycle`, `groups[].cycles`). "Scene cycle" section on the remote card (`CycleSection.tsx`).
 - [ ] RWL022 on real hardware: find its group with the Hue button, create, bind, save A/B, press the Hue button repeatedly. Check the order of scenes 0/1, and whether the power button toggles properly when bound to a group.
 - [ ] RWL021 on real hardware: check its `zha_event` commands (`on_press`), that binding on/off/level to the group still lets the `0xFC00` events reach HA, and the On → cycle behaviour. Check whether newer gen 1 firmware (with a Scenes out cluster) sends recalls itself.
