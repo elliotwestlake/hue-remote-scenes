@@ -130,6 +130,21 @@ async def async_remove(hass: HomeAssistant, group_id: int, scene_id: int) -> dic
     return {member: _result(reply) for member, reply in replies.items()}
 
 
+async def async_copy(hass: HomeAssistant, group_id: int, from_id: int, to_id: int) -> dict[str, str]:
+    """Each light copies its stored scene from_id to to_id (ZCL Copy Scene), without changing."""
+    replies = await _each(
+        _group(hass, group_id),
+        lambda c: c.copy(
+            mode=0,
+            group_id_from=group_id,
+            scene_id_from=from_id,
+            group_id_to=group_id,
+            scene_id_to=to_id,
+        ),
+    )
+    return {member: _result(reply) for member, reply in replies.items()}
+
+
 async def async_membership(hass: HomeAssistant, group_id: int) -> dict[str, list[int] | None]:
     """Which scene ids each light has for this group (None if it didn't answer)."""
     replies = await _each(

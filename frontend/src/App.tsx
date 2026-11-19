@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { AreaView } from "./AreaView";
-import { DialSetup } from "./DialSetup";
 import { Icon } from "./Icon";
 import { Logo } from "./Logo";
 import { buildAreas } from "./model";
-import { Overview } from "./Overview";
+import { RemotePage } from "./RemotePage";
 import { RemotesTab } from "./RemotesTab";
+import { RoomPage } from "./RoomPage";
+import { Rooms } from "./Rooms";
 import { errorText, type AreaIcons, type Group, type Hass, type Remote } from "./types";
 
 interface Props {
@@ -14,10 +14,10 @@ interface Props {
   onToggleMenu: () => void;
 }
 
-type Tab = "areas" | "remotes";
+type Tab = "rooms" | "remotes";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "areas", label: "Areas", icon: "home-outline" },
+  { id: "rooms", label: "Rooms", icon: "home-outline" },
   { id: "remotes", label: "Remotes", icon: "remote" },
 ];
 
@@ -25,9 +25,9 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [remotes, setRemotes] = useState<Remote[] | null>(null);
   const [icons, setIcons] = useState<AreaIcons>({});
-  const [tab, setTab] = useState<Tab>("areas");
-  const [openArea, setOpenArea] = useState<string | null>(null);
-  const [setup, setSetup] = useState<string | null>(null); // ieee of the remote whose scene buttons are being set up
+  const [tab, setTab] = useState<Tab>("rooms");
+  const [room, setRoom] = useState<string | null>(null); // area name of the open room
+  const [remoteId, setRemoteId] = useState<string | null>(null); // ieee of the open remote
   const [error, setError] = useState("");
 
   const reload = useCallback(() => {
@@ -54,14 +54,43 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
   }, [getHass, reload]);
 
   const areas = groups && remotes ? buildAreas(groups, remotes, icons) : null;
-  const area = areas?.find((a) => a.name === openArea);
-  const dial = remotes?.find((r) => r.ieee === setup);
+  const area = tab === "rooms" ? areas?.find((a) => a.name === room) : undefined;
+  const remote = remotes?.find((r) => r.ieee === remoteId);
 
   const pick = (t: Tab) => {
     setTab(t);
-    setOpenArea(null);
-    setSetup(null);
+    setRoom(null);
+    setRemoteId(null);
   };
+  const openRemote = (ieee: string) => {
+    setTab("remotes");
+    setRoom(null);
+    setRemoteId(ieee);
+  };
+
+  let content;
+  if (!groups || !remotes || !areas) content = <main>{error && <div className="status error">{error}</div>}</main>;
+  else if (remote) content = <RemotePage getHass={getHass} remote={remote} groups={groups} onBack={() => setRemoteId(null)} onChanged={reload} />;
+  else if (area) content = <RoomPage getHass={getHass} area={area} groups={groups} onBack={() => setRoom(null)} onOpenRemote={openRemote} onChanged={reload} />;
+  else
+    content = (
+      <main>
+        {error && <div className="status error">{error}</div>}
+        {tab === "remotes" ? (
+          <RemotesTab getHass={getHass} remotes={remotes} groups={groups} onOpen={setRemoteId} />
+        ) : areas.length ? (
+          <Rooms getHass={getHass} areas={areas} groups={groups} onOpen={setRoom} onOpenRemote={openRemote} />
+        ) : (
+          <div className="empty-state">
+            <Icon name="lightbulb-group-outline" />
+            <p>
+              No ZHA groups or remotes yet. Create a group under Settings → Devices & services → Zigbee Home Automation →
+              Configure → Groups. For a Hue Tap Dial, pair it and use the Remotes tab: it creates the group the dial needs.
+            </p>
+          </div>
+        )}
+      </main>
+    );
 
   return (
     <div className="panel">
@@ -84,33 +113,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
           ))}
         </nav>
       </header>
-
-      <main>
-        {error && <div className="status error">{error}</div>}
-        {dial && groups && (
-          <DialSetup getHass={getHass} remote={dial} groups={groups} onChanged={reload} onClose={() => setSetup(null)} />
-        )}
-        {!dial && areas && groups && remotes && tab === "areas" && !area && (
-          areas.length ? (
-            <Overview getHass={getHass} areas={areas} groups={groups} onOpen={setOpenArea} onSetup={setSetup} />
-          ) : (
-            <div className="empty-state">
-              <Icon name="lightbulb-group-outline" />
-              <p>
-                No ZHA groups or remotes yet. Create a group under Settings → Devices & services → Zigbee Home Automation →
-                Configure → Groups. For a Hue Tap Dial, pair it and use the Remotes tab: it creates the group the dial
-                needs.
-              </p>
-            </div>
-          )
-        )}
-        {!dial && area && groups && tab === "areas" && (
-          <AreaView getHass={getHass} area={area} groups={groups} onBack={() => setOpenArea(null)} onSetup={setSetup} onChanged={reload} />
-        )}
-        {!dial && groups && remotes && tab === "remotes" && (
-          <RemotesTab getHass={getHass} remotes={remotes} groups={groups} onSetup={setSetup} onChanged={reload} />
-        )}
-      </main>
+      {content}
     </div>
   );
 }

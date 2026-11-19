@@ -5,6 +5,7 @@ export interface Hass {
     subscribeMessage<T>(callback: (msg: T) => void, msg: Record<string, unknown>): Promise<() => Promise<void>>;
   };
   states: Record<string, { state: string; attributes: Record<string, any> } | undefined>;
+  callService(domain: string, service: string, data?: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface Member {
@@ -29,6 +30,7 @@ export interface Group {
   id: number;
   name: string;
   areas: string[]; // the group entity's area, else its lights' areas
+  entity_id: string | null; // ZHA's light entity for the group (room switch and brightness)
   members: Member[];
   scenes: Scene[];
   remotes: { ieee: string; name: string; clusters: number[] }[]; // remembered bindings

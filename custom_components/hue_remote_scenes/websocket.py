@@ -4,6 +4,7 @@ hue_remote_scenes/groups                                    -> ZHA groups: membe
 hue_remote_scenes/subscribe                                 -> pushes {} whenever stored scenes change
 hue_remote_scenes/store   {group_id, name? , scene_id?}     -> new scene (name) or re-save (scene_id)
 hue_remote_scenes/recall  {group_id, scene_id, transition?}
+hue_remote_scenes/copy    {group_id, from_scene_id, scene_id}   -> a saved scene copied to scene_id in the lights
 hue_remote_scenes/rename  {group_id, scene_id, name}
 hue_remote_scenes/delete  {group_id, scene_id}
 hue_remote_scenes/import  {group_id}                         -> scenes the lights already have
@@ -34,7 +35,7 @@ from homeassistant.util import dt as dt_util
 from . import zigbee
 from .areas import area_icons, device_area, group_areas
 from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_SCENES
-from .entities import battery_entity, light_entity
+from .entities import battery_entity, group_light_entity, light_entity
 from .logic import (
     SceneError,
     apply_bind_results,
@@ -58,6 +59,7 @@ def async_register(hass: HomeAssistant) -> None:
         ws_subscribe,
         ws_store,
         ws_recall,
+        ws_copy,
         ws_rename,
         ws_delete,
         ws_import,
@@ -106,6 +108,7 @@ async def ws_groups(hass, connection, msg, manager: SceneManager):
     out = []
     for group in zigbee.groups(hass):
         group["areas"] = group_areas(hass, group["id"], [m["ieee"] for m in group["members"]])
+        group["entity_id"] = group_light_entity(hass, group["id"])
         for member in group["members"]:
             member["entity_id"] = light_entity(hass, member["ieee"])
         group["remotes"] = [
@@ -181,6 +184,19 @@ async def ws_store(hass, connection, msg, manager: SceneManager):
 async def ws_recall(hass, connection, msg, manager: SceneManager):
     await manager.async_recall(msg["group_id"], msg["scene_id"], msg.get("transition"))
     return {"ok": True}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "hue_remote_scenes/copy",
+        vol.Required("from_scene_id"): vol.All(vol.Coerce(int), vol.Range(0, 255)),
+    }
+    | SCENE
+)
+@websocket_api.async_response
+@_handler
+async def ws_copy(hass, connection, msg, manager: SceneManager):
+    return await manager.async_copy(msg["group_id"], msg["from_scene_id"], msg["scene_id"])
 
 
 @websocket_api.websocket_command(

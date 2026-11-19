@@ -72,6 +72,21 @@ class SceneManager:
         await self.store.async_set(group_id, scene_id, scene)
         return {"scene_id": scene_id, "ok": ok, "failed": failed}
 
+    async def async_copy(self, group_id: int, from_id: int, to_id: int) -> dict[str, Any]:
+        """Put a saved scene at another id (e.g. a remote button's), copied inside the lights."""
+        source = self._require(group_id, from_id)
+        if from_id == to_id:
+            raise SceneError("That's the same scene")
+        results = await zigbee.async_copy(self.hass, group_id, from_id, to_id)
+        ok, failed = results_summary(results)
+        if not ok:
+            raise HomeAssistantError(
+                "No light copied the scene: " + ", ".join(f"{m} ({e})" for m, e in failed.items())
+            )
+        scene = {"name": source["name"], "members": ok, "colors": source.get("colors", [])}
+        await self.store.async_set(group_id, to_id, scene)
+        return {"scene_id": to_id, "ok": ok, "failed": failed}
+
     async def async_recall(
         self, group_id: int, scene_id: int, transition: float | None = None
     ) -> None:

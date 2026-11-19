@@ -26,6 +26,11 @@ def light_entity(hass: HomeAssistant, ieee: str) -> str | None:
     )
 
 
+def group_light_entity(hass: HomeAssistant, group_id: int) -> str | None:
+    """ZHA's light entity for a group (light_zha_group_0x<id>), for the room switch and brightness."""
+    return er.async_get(hass).async_get_entity_id("light", ZHA, f"light_zha_group_0x{int(group_id):04x}")
+
+
 def battery_entity(hass: HomeAssistant, ieee: str) -> str | None:
     return next(
         (

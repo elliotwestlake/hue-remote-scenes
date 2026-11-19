@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { SceneChip } from "./Scenes";
+import { SceneChip } from "./Tiles";
 import { plural, type Group, type Hass, type Remote } from "./types";
 
 interface Props {

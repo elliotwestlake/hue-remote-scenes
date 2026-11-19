@@ -119,3 +119,53 @@ export function ago(when: number | string | null): string | null {
   if (s < 172800) return "yesterday";
   return `${Math.round(s / 86400)} days ago`;
 }
+
+type LightState = { state: string; attributes: Record<string, any> } | undefined;
+
+/** A light's colour as CSS, dimmed by brightness (null when off). */
+export function lightCss(st: LightState): string | null {
+  if (st?.state !== "on") return null;
+  const [r, g, b] = st.attributes.rgb_color ?? [255, 214, 170];
+  const f = 0.45 + 0.55 * ((st.attributes.brightness ?? 255) / 255);
+  return `rgb(${Math.round(r * f)}, ${Math.round(g * f)}, ${Math.round(b * f)})`;
+}
+
+/** Light entities to switch for these groups: ZHA's group entities, else their members'. */
+export const roomEntities = (groups: Group[]) =>
+  groups.flatMap((g) => (g.entity_id ? [g.entity_id] : g.members.filter((m) => m.entity_id).map((m) => m.entity_id!)));
+
+/** Relative lightness (0–1) of some [r, g, b, brightness] colours, as they're drawn. */
+function lightness(colours: number[][]): number {
+  const l = colours.map(([r, g, b, bri]) => ((0.299 * r + 0.587 * g + 0.114 * b) / 255) * (0.35 + 0.65 * (bri / 255)));
+  return l.reduce((a, b) => a + b, 0) / l.length;
+}
+
+/** Whether a scene's swatch is pale enough to need dark text (unknown colours are pale grey). */
+export const isPale = (colors: SceneColor[] | undefined) => {
+  const lit = (colors ?? []).filter((c): c is [number, number, number, number] => !!c);
+  if (!colors?.length) return true;
+  return !!lit.length && lightness(lit) > 0.62;
+};
+
+/** The colours of the lights that are on, as a background (null when all are off). Light colours
+ * get a darker veil so white text stays readable. */
+export function roomBackground(hass: Hass, groups: Group[]): string | null {
+  const rgb: number[][] = [];
+  for (const g of groups)
+    for (const m of g.members) {
+      const st = m.entity_id ? hass.states[m.entity_id] : undefined;
+      if (st?.state === "on") rgb.push([...(st.attributes.rgb_color ?? [255, 214, 170]), st.attributes.brightness ?? 255]);
+    }
+  if (!rgb.length) return null;
+  const colours = [...new Set(rgb.map((c) => lightCss({ state: "on", attributes: { rgb_color: c.slice(0, 3), brightness: c[3] } })!))].slice(0, 3);
+  const stops = colours.length === 1 ? [colours[0], `color-mix(in srgb, ${colours[0]} 70%, black)`] : colours;
+  const veil = Math.min(0.5, Math.max(0.15, (lightness(rgb) - 0.35) * 0.9));
+  return `linear-gradient(rgba(0,0,0,${veil.toFixed(2)}), rgba(0,0,0,${veil.toFixed(2)})), linear-gradient(120deg, ${stops.join(", ")})`;
+}
+
+/** Average brightness of the lights that are on, 0–100. */
+export function roomBrightness(hass: Hass, groups: Group[]): number {
+  const on = groups.flatMap((g) => g.members.map((m) => (m.entity_id ? hass.states[m.entity_id] : undefined))).filter((s) => s?.state === "on");
+  if (!on.length) return 0;
+  return Math.round(on.reduce((n, s) => n + (s!.attributes.brightness ?? 255), 0) / on.length / 2.55);
+}

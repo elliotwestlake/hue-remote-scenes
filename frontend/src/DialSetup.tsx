@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { dialProgress, isOn, NO_AREA, sceneButtons } from "./model";
-import { remoteIcon } from "./RemoteCard";
-import { EmptySlotRow, SceneRow } from "./Scenes";
+import { remoteIcon } from "./RemotePage";
+import { AddTile, SceneTile } from "./Tiles";
 import { clearedText, dots, hex, plural, type BindResult, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
 import { useAction } from "./useAction";
 
@@ -242,7 +242,6 @@ function BindStep({ getHass, remote, group, bound, busy, act, onChanged }: StepP
 }
 
 function ScenesStep({ getHass, remote, group, busy, act, onChanged }: StepProps & { group: Group }) {
-  const capable = group.members.filter((m) => m.scenes);
   const save = (sceneId: number, name?: string) =>
     act(async () => {
       const r = await getHass().callWS<StoreResult>({ type: "hue_remote_scenes/store", group_id: group.id, scene_id: sceneId, ...(name ? { name } : {}) });
@@ -257,16 +256,14 @@ function ScenesStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
         Set the {group.name} lights how you want them for a button, then save. Do this for each one. You can change them
         later from the area.
       </p>
-      <div className="rows">
+      <div className="tiles">
         {remote.dial!.buttons.map(([label, sid]) => {
           const scene = group.scenes.find((s) => s.id === sid);
           return scene ? (
-            <SceneRow
+            <SceneTile
               key={sid}
               scene={scene}
-              dots={dots(label)}
-              total={capable.length}
-              missing=""
+              badge={dots(label)}
               busy={busy}
               onRecall={() => act(async () => {
                 await getHass().callWS({ type: "hue_remote_scenes/recall", group_id: group.id, scene_id: sid });
@@ -275,7 +272,7 @@ function ScenesStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
               onOverwrite={() => confirm(`Save how the lights are now as "${scene.name}"?`) && save(sid)}
             />
           ) : (
-            <EmptySlotRow key={sid} dots={dots(label)} label={label} busy={busy} onSave={(name) => save(sid, name)} />
+            <AddTile key={sid} badge={dots(label)} label="Save current state" busy={busy} onSave={(name) => save(sid, name)} />
           );
         })}
       </div>

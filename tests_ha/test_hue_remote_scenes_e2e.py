@@ -113,8 +113,14 @@ class FakeApp:
         if cluster == Scenes.cluster_id and hdr.frame_control.is_cluster:
             C = Scenes.ClientCommandDefs
             table = self.scenes[ieee]
-            key = (cmd.group_id, getattr(cmd, "scene_id", None))
-            if hdr.command_id == 0x04:  # store
+            key = (getattr(cmd, "group_id", None), getattr(cmd, "scene_id", None))
+            if hdr.command_id == 0x42:  # copy: one scene to another id, inside the bulb
+                src = table.get((cmd.group_id_from, cmd.scene_id_from))
+                if src is not None:
+                    table[(cmd.group_id_to, cmd.scene_id_to)] = dict(src)
+                rsp = C.copy_response.schema(status=0 if src is not None else foundation.Status.NOT_FOUND,
+                                             group_id=cmd.group_id_from, scene_id=cmd.scene_id_from)
+            elif hdr.command_id == 0x04:  # store
                 table[key] = dict(self.state[ieee])
                 rsp = C.store_scene_response.schema(status=0, group_id=cmd.group_id, scene_id=cmd.scene_id)
             elif hdr.command_id == 0x02:  # remove
@@ -363,6 +369,34 @@ async def test_scenes(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     app.unreachable.clear()
     r = await ws(10, type="hue_remote_scenes/groups")
     assert [s["id"] for s in r["result"]["groups"][0]["scenes"]] == [1]
+
+
+async def test_copy_scene(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    """A saved scene copied to another id (a remote button's) inside each bulb, lights untouched."""
+    app = zigbee
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    assert (await ws(1, type="hue_remote_scenes/store", group_id=GROUP, name="Relax"))["success"]
+    saved = dict(app.scenes[app.bulb1.ieee][(GROUP, 1)])
+    app.state[app.bulb1.ieee]["current_level"] = 5  # the lights have moved on since
+
+    r = await ws(2, type="hue_remote_scenes/copy", group_id=GROUP, from_scene_id=1, scene_id=5)
+    assert r["success"], r
+    assert r["result"] == {"scene_id": 5, "ok": sorted([_m(app.bulb1), _m(app.bulb2)]), "failed": {}}
+    assert app.scenes[app.bulb1.ieee][(GROUP, 5)] == saved
+    assert app.state[app.bulb1.ieee]["current_level"] == 5  # copying didn't touch the lights
+
+    r = await ws(3, type="hue_remote_scenes/groups")
+    scenes = {s["id"]: s for s in r["result"]["groups"][0]["scenes"]}
+    assert scenes[5]["name"] == "Relax" and scenes[5]["members"] == scenes[1]["members"]
+
+    r = await ws(4, type="hue_remote_scenes/copy", group_id=GROUP, from_scene_id=9, scene_id=5)
+    assert not r["success"] and r["error"]["code"] == "invalid"
 
 
 async def test_import_scenes_made_elsewhere(hass: HomeAssistant, zigbee, hass_ws_client) -> None:

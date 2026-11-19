@@ -1,24 +1,20 @@
-import { useState } from "react";
 import { Icon } from "./Icon";
-import { remoteStatus, type RemoteState } from "./model";
-import { RemoteCard } from "./RemoteCard";
+import { modelName, remoteStatus, type RemoteState } from "./model";
+import { remoteIcon } from "./RemotePage";
 import type { Group, Hass, Remote } from "./types";
 
 interface Props {
   getHass: () => Hass;
   remotes: Remote[];
   groups: Group[];
-  onSetup: (ieee: string) => void;
-  onChanged: () => void;
+  onOpen: (ieee: string) => void;
 }
-
-type Filter = "all" | RemoteState;
 
 const RANK: Record<RemoteState, number> = { attention: 0, ok: 1, idle: 2 };
 
-export function RemotesTab({ getHass, remotes, groups, onSetup, onChanged }: Props) {
-  const [filter, setFilter] = useState<Filter>("all");
-
+/** Every remote, those needing set-up first; open one to see its buttons. */
+export function RemotesTab({ getHass, remotes, groups, onOpen }: Props) {
+  const hass = getHass();
   if (!remotes.length)
     return (
       <div className="empty-state">
@@ -27,37 +23,29 @@ export function RemotesTab({ getHass, remotes, groups, onSetup, onChanged }: Pro
       </div>
     );
 
-  const withState = remotes.map((r) => ({ r, s: remoteStatus(r, groups).state }));
-  const count = (f: RemoteState) => withState.filter((x) => x.s === f).length;
-  const shown = withState
-    .filter((x) => filter === "all" || x.s === filter)
-    .sort((a, b) => RANK[a.s] - RANK[b.s] || a.r.name.localeCompare(b.r.name));
-  const filters: [Filter, string, number][] = [
-    ["all", "All", remotes.length],
-    ["attention", "Needs set-up", count("attention")],
-    ["idle", "Not set up", count("idle")],
-  ];
+  const rows = remotes
+    .map((r) => ({ r, s: remoteStatus(r, groups) }))
+    .sort((a, b) => RANK[a.s.state] - RANK[b.s.state] || a.r.name.localeCompare(b.r.name));
 
   return (
-    <>
-      <div className="inline-row">
-        <div className="segmented" role="radiogroup" aria-label="Show">
-          {filters.map(([f, label, n]) =>
-            f === "all" || n ? (
-              <button key={f} role="radio" aria-checked={filter === f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
-                {label} · {n}
-              </button>
-            ) : null,
-          )}
-        </div>
-        <span className="spacer" />
-        <span className="muted small">Battery remotes sleep: press a button on one just before changing it.</span>
-      </div>
-      <div className="grid">
-        {shown.map(({ r }) => (
-          <RemoteCard key={r.ieee} getHass={getHass} remote={r} groups={groups} onSetup={() => onSetup(r.ieee)} onChanged={onChanged} />
-        ))}
-      </div>
-    </>
+    <div className="list">
+      {rows.map(({ r, s }) => {
+        const battery = r.battery_entity ? hass.states[r.battery_entity]?.state : undefined;
+        const sub = [r.area, modelName(r), battery != null && battery !== "unavailable" && battery !== "unknown" ? `${Math.round(+battery)}%` : null]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <button key={r.ieee} className="list-row" onClick={() => onOpen(r.ieee)}>
+            <Icon name={remoteIcon(r)} className="row-icon big" />
+            <span className="grow">
+              <strong>{r.name}</strong>
+              <span className="muted small row-detail">{sub}</span>
+            </span>
+            <span className={`chip ${s.state === "ok" ? "ok" : s.state === "attention" ? "warn" : ""}`}>{s.label}</span>
+            <Icon name="chevron-right" />
+          </button>
+        );
+      })}
+    </div>
   );
 }
