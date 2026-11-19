@@ -279,13 +279,16 @@ async def ws_bind(hass, connection, msg, manager: SceneManager):
 async def _remove_other_bindings(
     hass: HomeAssistant, manager: SceneManager, ieee: str, group_id: int
 ) -> dict[str, Any]:
-    """Unbind everything but group_id and the coordinator. The remote is awake: it just
-    answered the bind."""
+    """Unbind everything but group_id, the remote's dial group and the coordinator.
+    The remote is awake: it just answered the bind."""
     try:
         table = await zigbee.async_binding_table(hass, ieee)
     except HomeAssistantError as err:
         return {"removed": [], "remove_failed": [], "table_error": str(err)}
-    stale = stale_bindings(table, group_id, zigbee.coordinator_ieee(hass))
+    keep = {int(group_id)}
+    if dial := manager.store.dial(ieee):
+        keep.add(int(dial["group_id"]))  # its scene buttons need their own group
+    stale = stale_bindings(table, keep, zigbee.coordinator_ieee(hass))
     removed, failed = await zigbee.async_unbind_entries(hass, ieee, stale)
     # We've just seen the whole table, so remember it as checked.
     await manager.store.async_set_remote(

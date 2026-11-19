@@ -603,6 +603,14 @@ async def test_dial_setup(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     app.press(app.dial, 1, DIAL_GROUP)  # 1 dot
     assert app.state[app.bulb1.ieee]["current_level"] == 20
 
+    # Binding it to another group too, clearing leftovers, keeps its own scene group.
+    r = await ws(11, type="hue_remote_scenes/bind", ieee=str(app.dial.ieee), endpoint=1, group_id=GROUP, exclusive=True)
+    assert r["result"]["removed"] == []
+    groups_bound = {b.DstAddress.nwk for b in app.bindings[app.dial.ieee] if b.DstAddress.addrmode == 1}
+    assert groups_bound == {DIAL_GROUP, GROUP}
+    app.press(app.dial, 0, DIAL_GROUP)
+    assert app.state[app.bulb1.ieee]["current_level"] == 254
+
 
 async def test_find_dial_group_times_out(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
     await _setup(hass)

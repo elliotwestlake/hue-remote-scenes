@@ -217,21 +217,24 @@ def apply_bind_results(
 
 
 def stale_bindings(
-    entries: list[dict[str, Any]], group_id: int, coordinator: str
+    entries: list[dict[str, Any]], keep_groups: set[int], coordinator: str
 ) -> list[dict[str, Any]]:
-    """Binding table entries to remove once a remote is bound to group_id.
+    """Binding table entries to remove once a remote is bound to a group.
 
-    Everything except bindings to that group and to the coordinator (ZHA binds a
+    keep_groups: that group, plus the remote's own scene group if it has been through
+    the dial set-up (its scene buttons only ever recall on that group).
+
+    Everything except bindings to those groups and to the coordinator (ZHA binds a
     remote's clusters there so its presses reach HA, and the dial set-up binds
     Scenes there): other groups (left over from Z2M or an earlier binding) and
     direct bindings to other devices (e.g. straight to a bulb).
     """
-    group_id = int(group_id)
+    keep = {int(g) for g in keep_groups}
     coordinator = coordinator.lower()
     out = []
     for e in entries:
         if e.get("addrmode") == 1:
-            if int(e["group_id"]) != group_id:
+            if int(e["group_id"]) not in keep:
                 out.append(e)
         elif e.get("addrmode") == 3:
             if str(e.get("ieee", "")).lower() != coordinator:

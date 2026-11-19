@@ -116,6 +116,8 @@ def test_stale_bindings():
     to_bulb = {"endpoint": 1, "cluster": 6, "addrmode": 3, "group_id": None,
                "ieee": "00:17:88:01:00:00:00:02", "dst_endpoint": 11}
     table = [ours, old_group, to_coord, to_bulb]
-    stale = L.stale_bindings(table, 5, coord)
+    stale = L.stale_bindings(table, {5}, coord)
     assert stale == [old_group, to_bulb]
     assert L.remove_entries(table, stale) == [ours, to_coord]
+    # A dial's own scene group is kept too.
+    assert L.stale_bindings(table, {5, 0x2A2A}, coord) == [to_bulb]
