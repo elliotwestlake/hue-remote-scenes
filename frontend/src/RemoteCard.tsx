@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Icon } from "./Icon";
 import { ago, dialProgress, isTapDial, modelName, remoteStatus, sceneButtons } from "./model";
 import { CycleSection } from "./CycleSection";
-import { Swatch } from "./SceneCard";
+import { SceneChip } from "./Scenes";
 import { CLUSTER_LABEL, dots, hex, type Binding, type Group, type Hass, type Remote } from "./types";
 import { useAction } from "./useAction";
 
@@ -10,15 +10,15 @@ interface Props {
   getHass: () => Hass;
   remote: Remote;
   groups: Group[];
-  compact?: boolean; // inside an area: no battery footer
-  onSetup: () => void; // open the Tap Dial set-up dialog
+  compact?: boolean; // inside an area: the area goes without saying
+  onSetup: () => void; // open the scene-button set-up
   onChanged: () => void;
 }
 
 const STEP_NAMES = ["Find its group", "Choose lights", "Bind", "Save button scenes"];
 
 export const remoteIcon = (r: Remote) =>
-  isTapDial(r) ? "mdi:knob" : r.endpoints.some((e) => e.clusters.includes(8)) ? "mdi:remote" : "mdi:gesture-tap-button";
+  isTapDial(r) ? "knob" : r.endpoints.some((e) => e.clusters.includes(8)) ? "remote" : "gesture-tap-button";
 
 export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChanged }: Props) {
   const { busy, result, act } = useAction();
@@ -34,7 +34,6 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
   const group = (id: number) => groups.find((g) => g.id === id);
   const groupName = (id: number) => group(id)?.name ?? `Group ${hex(id)}`;
   const battery = remote.battery_entity ? hass.states[remote.battery_entity]?.state : undefined;
-  const autoBind = status.state === "idle" && !remote.dial_supported; // nothing else to show
   const controls = remote.bound.filter((b) => !(dialDone && b.group_id === remote.dial?.group_id));
 
   const readBindings = () =>
@@ -73,72 +72,73 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
     });
 
   const dialGroup = progress.group;
+  const seen = remote.checked ? `Bindings checked ${ago(remote.checked)}` : remote.last_seen ? `Seen ${ago(remote.last_seen)}` : null;
+  const batteryText = battery != null && battery !== "unavailable" && battery !== "unknown" ? `${Math.round(+battery)}% battery` : null;
 
   return (
-    <section className={`card remote ${status.state === "attention" ? "attn" : ""} ${status.state === "idle" ? "idle" : ""}`}>
+    <section className="card remote">
       <div className="card-head">
-        <span className="ricon"><ha-icon icon={remoteIcon(remote)} /></span>
-        <div className="grow">
-          <h3 className="title">{remote.name}</h3>
-          <div className="muted small">
-            {[compact ? null : remote.area ?? "No area", modelName(remote)].filter(Boolean).join(" · ")}
+        <div className="title">
+          <Icon name={remoteIcon(remote)} className="title-icon" />
+          <div>
+            <h2>{remote.name}</h2>
+            <div className="muted small">
+              {[compact ? null : remote.area ?? "No area", modelName(remote), batteryText].filter(Boolean).join(" · ")}
+            </div>
           </div>
         </div>
         <span className={`chip ${status.state === "ok" ? "ok" : status.state === "attention" ? "warn" : ""}`}>{status.label}</span>
       </div>
 
-      {remote.dial_supported && !dialDone && (status.state === "attention" || compact) && (
-        <div className="progress-block">
-          <div className="row-between small">
-            <strong>Scene buttons: step {Math.min(progress.done + 1, 4)} of 4</strong>
-            <span className="muted">{STEP_NAMES[Math.min(progress.done, 3)]}</span>
-          </div>
-          <div className="prog"><span style={{ width: `${Math.max(6, (progress.done / 4) * 100)}%` }} /></div>
+      {remote.dial_supported && !dialDone && (
+        <div className="stack-sm">
+          <h3>Scene buttons</h3>
+          <div className="prog"><span style={{ width: `${Math.max(4, (progress.done / 4) * 100)}%` }} /></div>
+          <span className="muted small">
+            {progress.done ? `Step ${progress.done + 1} of 4: ${STEP_NAMES[progress.done].toLowerCase()}` : "Its buttons can recall scenes stored in the lights, even when Home Assistant is down."}
+          </span>
         </div>
       )}
 
       {dialDone && dialGroup && remote.dial && (
-        <>
-          <p className="label">Buttons</p>
-          <div className="sws">
+        <div className="stack-sm">
+          <h3>Buttons</h3>
+          <div className="chips">
             {remote.dial.buttons.map(([label, sid]) => {
               const scene = dialGroup.scenes.find((s) => s.id === sid)!;
-              return <Swatch key={sid} scene={scene} badge={dots(label)} disabled={!!busy} onRecall={() => recall(dialGroup.id, sid, scene.name)} />;
+              return <SceneChip key={sid} scene={scene} badge={dots(label)} disabled={!!busy} onRecall={() => recall(dialGroup.id, sid, scene.name)} />;
             })}
           </div>
-          <div className="ctl small">
+          <div className="ctl muted small">
             <Icon name={isTapDial(remote) ? "rotate-right" : "brightness-6"} />
-            <span className="grow">{sceneButtons(remote).rest}</span>
-            <span className="muted">{dialGroup.name}</span>
+            <span className="grow">{sceneButtons(remote).rest} · {dialGroup.name}</span>
           </div>
-        </>
+        </div>
       )}
 
       {controls.length > 0 && (
-        <>
-          <p className="label">{dialDone ? "Also controls" : "Controls"}</p>
-          <div className="stack-sm">
-            {controls.map((b) => (
-              <div key={b.group_id} className="ctl small">
-                <Icon name="lightbulb-group-outline" />
-                <span className="grow">
-                  <strong>{groupName(b.group_id)}</strong>
-                  {group(b.group_id)?.areas[0] && <span className="muted"> {group(b.group_id)!.areas[0]}</span>}
-                </span>
-                <span className="muted">{b.clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(" · ")}</span>
-              </div>
-            ))}
-          </div>
-        </>
+        <div className="stack-sm">
+          <h3>{dialDone ? "Also controls" : "Controls"}</h3>
+          {controls.map((b) => (
+            <div key={b.group_id} className="ctl">
+              <Icon name="lightbulb-group-outline" />
+              <span className="grow">
+                {groupName(b.group_id)}
+                {group(b.group_id)?.areas[0] && <span className="muted small"> · {group(b.group_id)!.areas[0]}</span>}
+              </span>
+              <span className="muted small">{b.clusters.map((c) => CLUSTER_LABEL[c] ?? c).join(", ")}</span>
+            </div>
+          ))}
+        </div>
       )}
 
       {remote.cycle_trigger && (
         <CycleSection getHass={getHass} remote={remote} groups={groups} busy={!!busy} act={act} onChanged={onChanged} />
       )}
 
-      {status.state === "idle" && !compact && !remote.cycle_trigger && <p className="muted small tight">Not controlling anything yet.</p>}
+      {status.state === "idle" && !remote.cycle_trigger && !remote.dial_supported && <p className="muted">Not bound to a group yet.</p>}
 
-      {(binding || autoBind) && (
+      {binding && (
         <div className="bind-row">
           {remote.endpoints.length > 1 && (
             <select value={ep.id} onChange={(e) => setEndpoint(+e.target.value)} aria-label="Button set">
@@ -158,25 +158,21 @@ export function RemoteCard({ getHass, remote, groups, compact, onSetup, onChange
         </div>
       )}
 
-      <div className="foot">
-        {!compact && battery != null && battery !== "unavailable" && battery !== "unknown" && (
-          <span className="chip"><Icon name="battery-outline" />{Math.round(+battery)}%</span>
-        )}
-        <span className="muted small grow">
-          {remote.checked ? `Checked ${ago(remote.checked)}` : compact ? "" : remote.last_seen ? `Seen ${ago(remote.last_seen)}` : "Not checked yet"}
-        </span>
-        {!(remote.dial_supported && !dialDone) && (
-          <button className="ghost" disabled={!!busy} onClick={readBindings}>Check bindings</button>
-        )}
-        {!autoBind && (
-          <button className="ghost" disabled={!!busy} onClick={() => setBinding(!binding)}>{binding ? "Close" : "Bind to…"}</button>
-        )}
-        {remote.dial_supported && !dialDone && (
-          <button className="primary" disabled={!!busy} onClick={onSetup}>
-            {progress.done ? "Continue set-up" : "Set up scene buttons"}
+      <div className="card-actions">
+        {remote.dial_supported && !dialDone ? (
+          <button className="soft-btn" disabled={!!busy} onClick={onSetup}>
+            <Icon name="cog-outline" /> {progress.done ? "Continue set-up" : "Set up scene buttons"}
+          </button>
+        ) : (
+          <button className="soft-btn" disabled={!!busy} onClick={() => setBinding(!binding)}>
+            <Icon name={binding ? "close" : "link-variant-plus"} /> {binding ? "Close" : "Bind to a group"}
           </button>
         )}
+        <button className="ghost" disabled={!!busy} onClick={readBindings}>
+          Check bindings
+        </button>
       </div>
+      {seen && !compact && <div className="muted small">{seen}</div>}
 
       {busy && <div className="status busy">{busy}</div>}
       {result && <div className={`status ${result.kind}`}>{result.text}</div>}

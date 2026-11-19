@@ -18,7 +18,7 @@ type Tab = "areas" | "remotes";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "areas", label: "Areas", icon: "home-outline" },
-  { id: "remotes", label: "All remotes", icon: "remote" },
+  { id: "remotes", label: "Remotes", icon: "remote" },
 ];
 
 export function App({ getHass, narrow, onToggleMenu }: Props) {
@@ -60,6 +60,7 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
   const pick = (t: Tab) => {
     setTab(t);
     setOpenArea(null);
+    setSetup(null);
   };
 
   return (
@@ -86,31 +87,30 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
 
       <main>
         {error && <div className="status error">{error}</div>}
-        {areas && groups && remotes && tab === "areas" && !area && (
+        {dial && groups && (
+          <DialSetup getHass={getHass} remote={dial} groups={groups} onChanged={reload} onClose={() => setSetup(null)} />
+        )}
+        {!dial && areas && groups && remotes && tab === "areas" && !area && (
           areas.length ? (
-            <Overview getHass={getHass} areas={areas} groups={groups} remotes={remotes} onOpen={setOpenArea} onSetup={setSetup} />
+            <Overview getHass={getHass} areas={areas} groups={groups} onOpen={setOpenArea} onSetup={setSetup} />
           ) : (
             <div className="empty-state">
               <Icon name="lightbulb-group-outline" />
               <p>
                 No ZHA groups or remotes yet. Create a group under Settings → Devices & services → Zigbee Home Automation →
-                Configure → Groups. For a Hue Tap Dial, pair it and use the All remotes tab: it creates the group the dial
+                Configure → Groups. For a Hue Tap Dial, pair it and use the Remotes tab: it creates the group the dial
                 needs.
               </p>
             </div>
           )
         )}
-        {area && groups && tab === "areas" && (
+        {!dial && area && groups && tab === "areas" && (
           <AreaView getHass={getHass} area={area} groups={groups} onBack={() => setOpenArea(null)} onSetup={setSetup} onChanged={reload} />
         )}
-        {groups && remotes && tab === "remotes" && (
+        {!dial && groups && remotes && tab === "remotes" && (
           <RemotesTab getHass={getHass} remotes={remotes} groups={groups} onSetup={setSetup} onChanged={reload} />
         )}
       </main>
-
-      {dial && groups && (
-        <DialSetup getHass={getHass} remote={dial} groups={groups} onChanged={reload} onClose={() => setSetup(null)} />
-      )}
     </div>
   );
 }

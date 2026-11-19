@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { dialProgress, isOn, NO_AREA, sceneButtons } from "./model";
 import { remoteIcon } from "./RemoteCard";
-import { NewSceneCard, SceneCard } from "./SceneCard";
+import { EmptySlotRow, SceneRow } from "./Scenes";
 import { dots, hex, plural, type Group, type Hass, type Light, type Remote, type StoreResult } from "./types";
 import { useAction } from "./useAction";
 
@@ -14,12 +14,7 @@ interface Props {
   onClose: () => void;
 }
 
-const STEPS = [
-  { title: "Find its group", hint: "Press a scene button" },
-  { title: "Choose lights", hint: "Creates the group in ZHA" },
-  { title: "Bind", hint: "Press a button first" },
-  { title: "Save button scenes", hint: "One per button" },
-];
+const STEPS = [{ title: "Find group" }, { title: "Lights" }, { title: "Bind" }, { title: "Scenes" }];
 
 /**
  * Remotes whose buttons recall fixed scenes on their own built-in group, straight from the lights
@@ -33,7 +28,7 @@ export function DialSetup({ getHass, remote, groups, onChanged, onClose }: Props
   const dial = remote.dial;
   const group = progress.group;
 
-  // Move on as steps complete (the dialog's data reloads after each one).
+  // Move on as steps complete (the data reloads after each one).
   useEffect(() => {
     setStep((s) => Math.max(s, Math.min(progress.done, 3)));
   }, [progress.done]);
@@ -44,62 +39,55 @@ export function DialSetup({ getHass, remote, groups, onChanged, onClose }: Props
   };
 
   return (
-    <div className="dialog-scrim" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={`Set up ${remote.name}`}>
-        <div className="dialog-head">
-          <span className="ricon"><ha-icon icon={remoteIcon(remote)} /></span>
-          <div className="grow">
+    <section className="card remote">
+      <div className="card-head">
+        <div className="title">
+          <Icon name={remoteIcon(remote)} className="title-icon" />
+          <div>
             <h2>Set up {remote.name}</h2>
             <div className="muted small">Scene buttons that work even when Home Assistant is down</div>
           </div>
-          <button className="icon-btn" onClick={onClose} disabled={!!busy} aria-label="Close"><Icon name="close" /></button>
         </div>
-
-        <div className="dialog-body">
-          <ol className="stepper">
-            {STEPS.map((s, i) => {
-              const done = [progress.found, !!group, progress.bound, progress.saved][i];
-              return (
-                <li key={s.title}>
-                  <button className={`step ${i === step ? "cur" : ""} ${done ? "done" : ""}`} onClick={() => go(i)} disabled={!!busy}>
-                    <span className="num">{done ? <Icon name="check" /> : i + 1}</span>
-                    <span>
-                      <strong>{s.title}</strong>
-                      <span className="muted small">{i === 0 && dial ? `Uses group ${hex(dial.group_id)}` : s.hint}</span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-
-          <div className="dialog-main">
-            {step === 0 && <FindStep getHass={getHass} remote={remote} busy={!!busy} act={act} onChanged={onChanged} />}
-            {step === 1 && (dial ? <LightsStep getHass={getHass} remote={remote} group={group} busy={!!busy} act={act} onChanged={onChanged} /> : <NeedEarlier />)}
-            {step === 2 &&
-              (dial && group ? (
-                <BindStep getHass={getHass} remote={remote} group={group} bound={progress.bound} busy={!!busy} act={act} onChanged={onChanged} />
-              ) : (
-                <NeedEarlier />
-              ))}
-            {step === 3 && (dial && group ? <ScenesStep getHass={getHass} remote={remote} group={group} busy={!!busy} act={act} onChanged={onChanged} /> : <NeedEarlier />)}
-
-            {busy && <div className="status busy">{busy}</div>}
-            {result && <div className={`status ${result.kind}`}>{result.text}</div>}
-          </div>
-        </div>
-
-        <div className="dialog-foot">
-          <span className="muted small grow">Step {step + 1} of 4</span>
-          {step > 0 && <button disabled={!!busy} onClick={() => go(step - 1)}>Back</button>}
-          {step < 3 ? (
-            <button className="primary" disabled={!!busy || progress.done <= step} onClick={() => go(step + 1)}>Next</button>
-          ) : (
-            <button className="primary" disabled={!!busy} onClick={onClose}>Done</button>
-          )}
-        </div>
+        <button className="ghost" onClick={onClose} disabled={!!busy}>
+          <Icon name="close" /> Close
+        </button>
       </div>
-    </div>
+
+      <div className="segmented full steps" role="tablist">
+        {STEPS.map((s, i) => {
+          const done = [progress.found, !!group, progress.bound, progress.saved][i];
+          return (
+            <button key={s.title} role="tab" aria-selected={i === step} className={`${i === step ? "on" : ""} ${done ? "done" : ""}`} onClick={() => go(i)} disabled={!!busy}>
+              {done && <Icon name="check" />}
+              {s.title}
+            </button>
+          );
+        })}
+      </div>
+
+      {step === 0 && <FindStep getHass={getHass} remote={remote} busy={!!busy} act={act} onChanged={onChanged} />}
+      {step === 1 && (dial ? <LightsStep getHass={getHass} remote={remote} group={group} busy={!!busy} act={act} onChanged={onChanged} /> : <NeedEarlier />)}
+      {step === 2 &&
+        (dial && group ? (
+          <BindStep getHass={getHass} remote={remote} group={group} bound={progress.bound} busy={!!busy} act={act} onChanged={onChanged} />
+        ) : (
+          <NeedEarlier />
+        ))}
+      {step === 3 && (dial && group ? <ScenesStep getHass={getHass} remote={remote} group={group} busy={!!busy} act={act} onChanged={onChanged} /> : <NeedEarlier />)}
+
+      {busy && <div className="status busy">{busy}</div>}
+      {result && <div className={`status ${result.kind}`}>{result.text}</div>}
+
+      <div className="card-actions">
+        {step > 0 && <button className="ghost" disabled={!!busy} onClick={() => go(step - 1)}><Icon name="chevron-left" /> Back</button>}
+        <span className="spacer" />
+        {step < 3 ? (
+          <button className="primary" disabled={!!busy || progress.done <= step} onClick={() => go(step + 1)}>Next <Icon name="chevron-right" /></button>
+        ) : (
+          <button className="primary" disabled={!!busy} onClick={onClose}>Done</button>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -121,14 +109,15 @@ function FindStep({ getHass, remote, busy, act, onChanged }: StepProps) {
       return `Its scene buttons use group ${hex(r.group_id)}${r.exists ? ", which ZHA already has" : ""}.`;
     }, `Press ${sceneButtons(remote).press} now, then again every few seconds until this finishes…`);
   return (
-    <div className="step-body">
-      <h3 className="title">Find the remote's group</h3>
+    <div className="stack-sm">
+      <h2>Find the remote's group</h2>
       <p className="muted">
         This remote recalls its scenes on its own built-in group. Press <strong>Find its group</strong>, then press{" "}
         {sceneButtons(remote).press} a few times so it wakes up and shows which group it uses.
       </p>
-      <div>
-        <button className="primary" disabled={busy} onClick={find}><Icon name="magnify" /> {remote.dial ? "Find again" : "Find its group"}</button>
+      <div className="inline-row">
+        <button className={remote.dial ? "" : "primary"} disabled={busy} onClick={find}><Icon name="magnify" /> {remote.dial ? "Find again" : "Find its group"}</button>
+        {remote.dial && <span className="chip ok"><Icon name="check" /> Uses group {hex(remote.dial.group_id)}</span>}
       </div>
     </div>
   );
@@ -174,8 +163,8 @@ function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
   );
 
   return (
-    <div className="step-body">
-      <h3 className="title">{group ? `Lights in ${group.name}` : "Which lights should it control?"}</h3>
+    <div className="stack-sm">
+      <h2>{group ? `Lights in ${group.name}` : "Which lights should it control?"}</h2>
       <p className="muted">
         {group
           ? `${plural(group.members.length, "light")} are in the remote's group. Tick more to add them.`
@@ -185,7 +174,7 @@ function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
       {lights && !lights.length && <p className="muted">No lights that can store scenes found.</p>}
       {areas.map((a) => (
         <div key={a} className="stack-sm">
-          <p className="label">{a}</p>
+          <h3>{a}</h3>
           <div className="picks">
             {byArea.get(a)!.map((l) => {
               const inGroup = members.has(l.key);
@@ -194,7 +183,7 @@ function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
                 <label key={l.key} className={`pick ${on ? "on" : ""}`}>
                   <input type="checkbox" checked={on} disabled={inGroup || busy} onChange={() => toggle(l.key)} />
                   <span className={`bulb ${isOn(hass, l.entity_id) ? "lit" : ""}`} />
-                  <span className="grow">{l.name}</span>
+                  <span>{l.name}</span>
                 </label>
               );
             })}
@@ -202,13 +191,13 @@ function LightsStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
         </div>
       ))}
       {!group && (
-        <label className="stack-sm">
-          <strong>Group name</strong>
+        <label className="inline-row">
+          <span className="muted">Group name</span>
           <input type="text" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
         </label>
       )}
-      <div className="row-end">
-        <span className="muted small grow">{picked.size ? `${plural(picked.size, "light")} selected` : ""}</span>
+      <div className="inline-row">
+        <span className="muted small spacer">{picked.size ? `${plural(picked.size, "light")} selected` : ""}</span>
         <button className="primary" disabled={busy || !picked.size || (!group && !name.trim())} onClick={create}>
           <Icon name="plus" /> {group ? "Add lights" : "Create group"}
         </button>
@@ -236,13 +225,13 @@ function BindStep({ getHass, remote, group, bound, busy, act, onChanged }: StepP
       return `Bound to ${group.name}.`;
     }, "Waiting for the remote… press one of its buttons.");
   return (
-    <div className="step-body">
-      <h3 className="title">Bind {remote.name} to {group.name}</h3>
+    <div className="stack-sm">
+      <h2>Bind {remote.name} to {group.name}</h2>
       <p className="muted">
         Binding makes the remote talk to the lights directly over Zigbee. It's asleep most of the time:{" "}
         <strong>press one of its buttons</strong>, then press Bind.
       </p>
-      <div className="row-start">
+      <div className="inline-row">
         <button className="primary" disabled={busy} onClick={bind}><Icon name="link-variant-plus" /> {bound ? "Bind again" : "Bind"}</button>
         {bound && <span className="chip ok">Bound</span>}
       </div>
@@ -260,20 +249,20 @@ function ScenesStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
       return failed ? `Saved on ${r.ok.length} of ${r.ok.length + failed} lights; some didn't answer.` : `Saved on ${plural(r.ok.length, "light")}`;
     });
   return (
-    <div className="step-body">
-      <h3 className="title">Save a scene for each button</h3>
+    <div className="stack-sm">
+      <h2>Save a scene for each button</h2>
       <p className="muted">
         Set the {group.name} lights how you want them for a button, then save. Do this for each one. You can change them
         later from the area.
       </p>
-      <div className="cards2">
+      <div className="rows">
         {remote.dial!.buttons.map(([label, sid]) => {
           const scene = group.scenes.find((s) => s.id === sid);
           return scene ? (
-            <SceneCard
+            <SceneRow
               key={sid}
               scene={scene}
-              badge={dots(label)}
+              dots={dots(label)}
               total={capable.length}
               missing=""
               busy={busy}
@@ -284,7 +273,7 @@ function ScenesStep({ getHass, remote, group, busy, act, onChanged }: StepProps 
               onOverwrite={() => confirm(`Save how the lights are now as "${scene.name}"?`) && save(sid)}
             />
           ) : (
-            <NewSceneCard key={sid} badge={dots(label)} placeholder={`Scene for ${label}`} busy={busy} onSave={(name) => save(sid, name)} />
+            <EmptySlotRow key={sid} dots={dots(label)} label={label} busy={busy} onSave={(name) => save(sid, name)} />
           );
         })}
       </div>

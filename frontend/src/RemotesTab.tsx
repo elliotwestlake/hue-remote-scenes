@@ -39,23 +39,25 @@ export function RemotesTab({ getHass, remotes, groups, onSetup, onChanged }: Pro
   ];
 
   return (
-    <div className="stack">
-      <div className="row-start wrap">
-        {filters.map(([f, label, n]) =>
-          f === "all" || n ? (
-            <button key={f} className={`fchip ${filter === f ? "on" : ""}`} onClick={() => setFilter(f)}>
-              {label} <span>{n}</span>
-            </button>
-          ) : null,
-        )}
-        <span className="grow" />
+    <>
+      <div className="inline-row">
+        <div className="segmented" role="radiogroup" aria-label="Show">
+          {filters.map(([f, label, n]) =>
+            f === "all" || n ? (
+              <button key={f} role="radio" aria-checked={filter === f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
+                {label} · {n}
+              </button>
+            ) : null,
+          )}
+        </div>
+        <span className="spacer" />
         <span className="muted small">Battery remotes sleep: press a button on one just before changing it.</span>
       </div>
-      <div className="tiles">
+      <div className="grid">
         {shown.map(({ r }) => (
           <RemoteCard key={r.ieee} getHass={getHass} remote={r} groups={groups} onSetup={() => onSetup(r.ieee)} onChanged={onChanged} />
         ))}
       </div>
-    </div>
+    </>
   );
 }

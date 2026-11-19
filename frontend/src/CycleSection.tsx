@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { Swatch } from "./SceneCard";
+import { SceneChip } from "./Scenes";
 import { plural, type Group, type Hass, type Remote } from "./types";
 
 interface Props {
@@ -46,39 +46,37 @@ export function CycleSection({ getHass, remote, groups, busy, act, onChanged }: 
 
   return (
     <div className="stack-sm">
-      <div className="row-between">
-        <p className="label">Scene cycle</p>
-        <span className="chip" title="The cycle runs in Home Assistant. Bound on/off and dimming work without it.">Needs Home Assistant</span>
-      </div>
+      <h3>Scene cycle</h3>
 
       {!editing && cycle && cycleGroup && (
         <>
-          <div className="sws">
+          <div className="chips">
             {cycle.scene_ids.map((sid, i) => {
               const scene = cycleGroup.scenes.find((s) => s.id === sid);
               return scene ? (
-                <Swatch key={sid} scene={scene} badge={String(i + 1)} disabled={busy} onRecall={() => recall(cycleGroup.id, sid, scene.name)} />
+                <SceneChip key={sid} scene={scene} badge={String(i + 1)} disabled={busy} onRecall={() => recall(cycleGroup.id, sid, scene.name)} />
               ) : null;
             })}
           </div>
-          <div className="ctl small">
+          <div className="ctl muted small">
             <Icon name="sync" />
-            <span className="grow">{trigger.label} recalls the next scene; after a pause it starts again</span>
-            <span className="muted">{cycleGroup.name}</span>
+            <span className="grow">
+              {trigger.label} recalls the next scene in {cycleGroup.name}. Needs Home Assistant running.
+            </span>
           </div>
-          <div className="row-start">
+          <div className="actions">
             <button className="ghost" disabled={busy} onClick={() => setEditing(true)}>Change</button>
-            <button className="ghost" disabled={busy} onClick={() => save(true)}>Stop</button>
+            <button className="danger" disabled={busy} onClick={() => save(true)}>Stop</button>
           </div>
         </>
       )}
 
       {!editing && !cycle && (
-        <div className="row-start">
-          <p className="muted small grow tight0">
-            It can't recall scenes itself, but while Home Assistant runs, <strong>{trigger.label.toLowerCase()}</strong> can
-            step through scenes you pick.
-          </p>
+        <div className="inline-row">
+          <span className="muted small grow">
+            It can't recall scenes itself, but while Home Assistant runs, {trigger.label.toLowerCase()} can step through
+            scenes you pick.
+          </span>
           <button disabled={busy || !groups.length} onClick={() => setEditing(true)}>Choose scenes</button>
         </div>
       )}
@@ -98,15 +96,17 @@ export function CycleSection({ getHass, remote, groups, busy, act, onChanged }: 
               <option key={g.id} value={g.id}>{g.name}{g.areas[0] ? ` (${g.areas[0]})` : ""}</option>
             ))}
           </select>
-          <div className="row-start wrap">
+          <div className="chips">
             {(group?.scenes ?? []).map((s) => (
-              <button key={s.id} className={`fchip ${picked.includes(s.id) ? "on" : ""}`} onClick={() => toggle(s.id)}>
-                {picked.includes(s.id) && <span>{picked.indexOf(s.id) + 1}</span>} {s.name}
+              <button key={s.id} className={`chip-btn ${picked.includes(s.id) ? "on" : ""}`} onClick={() => toggle(s.id)}>
+                {picked.includes(s.id) && `${picked.indexOf(s.id) + 1} · `}
+                {s.name}
               </button>
             ))}
             {group && !group.scenes.length && <span className="muted small">Save some scenes in this group first.</span>}
           </div>
-          <div className="row-end">
+          <div className="actions">
+            <span className="spacer" />
             <button className="ghost" disabled={busy} onClick={() => setEditing(false)}>Cancel</button>
             <button className="primary" disabled={busy || !picked.length} onClick={() => save(false)}>Save cycle</button>
           </div>
