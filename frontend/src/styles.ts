@@ -1,5 +1,4 @@
 // HA theme variables pierce the shadow root, so the panel follows light/dark themes.
-// The base (header, cards, buttons, chips, segmented, status) matches hive-local's panel.
 export const styles = /* css */ `
 :host {
   --hl-light: var(--state-light-active-color, #ff9800);
@@ -28,7 +27,7 @@ export const styles = /* css */ `
 p { margin: 0; line-height: 1.5; }
 code { font-size: 13px; padding: 1px 5px; border-radius: 6px; background: var(--hl-soft); }
 
-/* Header: logo and title, with the tabs inline beside them (they wrap to a row of their own when there's no room). Same as hive-local. */
+/* Header: logo and title, with the tabs inline beside them (they wrap to a row of their own when there's no room). */
 header { position: sticky; top: 0; z-index: 2; background: var(--app-header-background-color, var(--primary-color)); color: var(--app-header-text-color, #fff); border-bottom: var(--app-header-border-bottom, none); }
 .toolbar-row { display: flex; align-items: center; flex-wrap: wrap; column-gap: 20px; min-height: 56px; padding: 0 16px; }
 .brand { display: flex; align-items: center; gap: 10px; height: 56px; flex: none; }
@@ -109,7 +108,7 @@ select, input[type=text] { font: inherit; font-size: 14px; padding: 8px 10px; bo
 .empty-state .icon-wrap { --mdc-icon-size: 48px; opacity: .5; }
 .empty-state p { max-width: 560px; }
 
-/* A card's actions, like hive-local's */
+/* A card's actions */
 .card-actions { display: flex; align-items: center; gap: 8px; }
 
 /* Banner: something to set up */
