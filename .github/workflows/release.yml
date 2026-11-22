@@ -1,13 +1,18 @@
 name: Release
 # Run from the Actions tab (or the API) after bumping "version" in manifest.json.
 # Tags main as v<version> and publishes a GitHub release, which is what the
-# Marketplace (formerly HACS) offers as an update.
+# Marketplace (formerly HACS) offers as an update. With "tag", it only rewrites
+# that existing release's notes.
 on:
   workflow_dispatch:
     inputs:
       notes:
         description: Release notes (Markdown)
         required: true
+      tag:
+        description: Only replace the notes of this existing release (e.g. v0.5.0); leave empty to release
+        required: false
+        default: ""
 permissions:
   contents: write
 jobs:
@@ -19,7 +24,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ inputs.notes }}
+          TAG: ${{ inputs.tag }}
         run: |
+          if [ -n "$TAG" ]; then
+            gh release edit "$TAG" --notes "$NOTES"
+            exit 0
+          fi
           version=$(jq -r .version custom_components/hue_remote_scenes/manifest.json)
           if gh release view "v$version" >/dev/null 2>&1; then
             echo "v$version is already released; bump the version in manifest.json first." >&2
