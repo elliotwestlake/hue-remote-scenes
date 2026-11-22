@@ -101,17 +101,19 @@ export function App({ getHass, narrow, onToggleMenu }: Props) {
               <Icon name="menu" />
             </button>
           )}
-          <Logo />
-          <h1>Hue remote scenes</h1>
+          <div className="brand">
+            <Logo />
+            <h1>Hue remote scenes</h1>
+          </div>
+          <nav className="tabs" role="tablist">
+            {TABS.map((t) => (
+              <button key={t.id} role="tab" aria-selected={t.id === tab} className={t.id === tab ? "on" : ""} onClick={() => pick(t.id)}>
+                <Icon name={t.icon} />
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </nav>
         </div>
-        <nav className="tabs" role="tablist">
-          {TABS.map((t) => (
-            <button key={t.id} role="tab" aria-selected={t.id === tab} className={t.id === tab ? "on" : ""} onClick={() => pick(t.id)}>
-              <Icon name={t.icon} />
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </nav>
       </header>
       {content}
     </div>

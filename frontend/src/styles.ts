@@ -28,19 +28,23 @@ export const styles = /* css */ `
 p { margin: 0; line-height: 1.5; }
 code { font-size: 13px; padding: 1px 5px; border-radius: 6px; background: var(--hl-soft); }
 
-/* Header: toolbar + tabs, like HA's own panels */
+/* Header: logo and title, with the tabs inline beside them (they wrap to a row of their own when there's no room). Same as hive-local. */
 header { position: sticky; top: 0; z-index: 2; background: var(--app-header-background-color, var(--primary-color)); color: var(--app-header-text-color, #fff); border-bottom: var(--app-header-border-bottom, none); }
-.toolbar-row { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; }
-.toolbar-row h1 { font-size: 20px; font-weight: 400; margin: 0; }
+.toolbar-row { display: flex; align-items: center; flex-wrap: wrap; column-gap: 20px; min-height: 56px; padding: 0 16px; }
+.brand { display: flex; align-items: center; gap: 10px; height: 56px; flex: none; }
+.toolbar-row h1 { font-size: 20px; font-weight: 400; margin: 0; white-space: nowrap; }
 .logo { position: relative; width: 26px; height: 26px; flex: none; }
 .logo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .logo-ring { position: absolute; inset: 1px; border-radius: 50%; background: conic-gradient(#ffb020, #ff6a3d, #ff4f8b, #b65cff, #5b6bff, #2f9bff, #19c3c0, #7fd36b, #ffb020); -webkit-mask: radial-gradient(circle, transparent 8.8px, #000 9.4px); mask: radial-gradient(circle, transparent 8.8px, #000 9.4px); }
-.toolbar-row .menu-btn { display: inline-flex; background: transparent; border: 0; color: inherit; padding: 8px; margin-left: -8px; border-radius: 50%; }
+.toolbar-row .menu-btn { display: inline-flex; background: transparent; border: 0; color: inherit; padding: 8px; margin-left: -8px; margin-right: -10px; border-radius: 50%; }
 .toolbar-row .menu-btn:hover { background: rgba(255,255,255,.12); }
-.tabs { display: flex; gap: 2px; padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
-.tabs button { flex: none; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 0; background: transparent; color: inherit; opacity: .72; padding: 12px 14px 10px; border-bottom: 2px solid transparent; font-weight: 500; letter-spacing: .01em; }
-.tabs button:hover { opacity: .95; background: rgba(255,255,255,.06); }
-.tabs button.on { opacity: 1; border-bottom-color: currentColor; }
+/* Pills. flex-shrink 0: when they don't fit beside the logo, the tabs wrap onto their own row instead of squashing. */
+.tabs { display: flex; align-items: center; gap: 4px; flex: 1 0 auto; padding: 10px 0; margin: 0 -8px 0 -4px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; border: 0; border-radius: 999px; background: transparent; color: inherit; opacity: .75; padding: 0 14px; font-weight: 500; letter-spacing: .01em; }
+.tabs button:hover:not(:disabled) { opacity: .95; background: color-mix(in srgb, currentColor 7%, transparent); }
+.tabs button:active:not(:disabled) { transform: none; }
+.tabs button.on, .tabs button.on:hover:not(:disabled) { opacity: 1; background: color-mix(in srgb, currentColor 13%, transparent); }
 .tabs .icon-wrap { --mdc-icon-size: 18px; }
 
 main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
@@ -252,13 +256,20 @@ h3 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; margin-lef
 .bulb.lit { background: var(--hl-light); }
 
 @media (max-width: 600px) {
-  main { padding: 12px 8px 24px; gap: 12px; }
+  /* Room at the bottom for the tab bar (and the phone's home indicator). */
+  main { padding: 12px 8px calc(88px + env(safe-area-inset-bottom)); gap: 12px; }
   .card { padding: 14px; }
   .rooms { grid-template-columns: 1fr; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tabs { padding: 0 4px; }
-  .tabs button { padding: 12px 10px 10px; font-size: 13px; }
-  .tabs .icon-wrap { display: none; }
+  /* Phones: the tabs become a bar along the bottom, in thumb reach. */
+  .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; margin: 0; gap: 0; justify-content: space-around;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); overflow: visible;
+    background: var(--card-background-color); color: var(--primary-text-color); border-top: 1px solid var(--divider-color); box-shadow: 0 -2px 10px rgba(0,0,0,.06); }
+  .tabs button { flex: 1 1 0; flex-direction: column; gap: 2px; height: 54px; padding: 0; border-radius: 14px; font-size: 11.5px; letter-spacing: 0; opacity: .7; }
+  .tabs button:hover:not(:disabled) { background: transparent; }
+  .tabs button.on, .tabs button.on:hover:not(:disabled) { background: transparent; color: var(--hl-light); opacity: 1; }
+  .tabs .icon-wrap { --mdc-icon-size: 22px; padding: 3px 16px; border-radius: 999px; transition: background .15s; }
+  .tabs button.on .icon-wrap { background: color-mix(in srgb, var(--hl-light) 16%, transparent); }
   .segmented.steps button { padding: 7px 6px; font-size: 12px; }
   .hero h1 { font-size: 24px; }
   .list .bri { width: 72px; }
