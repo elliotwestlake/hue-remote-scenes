@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Icon } from "./Icon";
 import { Brightness, Switch } from "./LightControls";
 import { lightCss, lightsOn, remoteStatus, roomBackground, roomBrightness, roomEntities, isOn, type Area } from "./model";
 import { RemoteIcon } from "./RemoteIcon";
+import { SceneEditor } from "./SceneEditor";
 import { AddTile, SceneTile } from "./Tiles";
 import { dots, plural, type Group, type Hass, type StoreResult } from "./types";
 import { useAction } from "./useAction";
@@ -76,9 +78,19 @@ export function RoomPage({ getHass, area, groups, onBack, onOpenRemote, onChange
   );
 }
 
+/** What the scene editor is open for: a new scene, a button's empty slot, or a saved scene. */
+interface Editing {
+  title: string;
+  saveLabel: string;
+  scene_id?: number;
+  name?: string;
+  restore?: boolean; // Cancel recalls the saved scene again, undoing the changes
+}
+
 /** A group's remote-button scenes, its other scenes and its lights. */
 function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Hass; group: Group; titled: boolean; onChanged: () => void }) {
   const { busy, result, act } = useAction();
+  const [editing, setEditing] = useState<Editing | null>(null);
   const hass = getHass();
   const names = Object.fromEntries(group.members.map((m) => [m.key, m.name]));
   const capable = group.members.filter((m) => m.scenes);
@@ -103,6 +115,23 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
   const recall = (id: number, name: string) => run({ type: "hue_remote_scenes/recall", scene_id: id }, () => `Recalled ${name}`);
   const overwrite = (id: number, name: string) =>
     confirm(`Save how the lights are now as "${name}"?`) && run({ type: "hue_remote_scenes/store", scene_id: id }, storeText("Saved"));
+  const edit = (id: number, name: string) =>
+    act(async () => {
+      // Start from the scene as saved, so the editor tweaks it.
+      await getHass().callWS({ type: "hue_remote_scenes/recall", group_id: group.id, scene_id: id });
+      setEditing({ title: `Edit ${name}`, saveLabel: "Save changes", scene_id: id, name, restore: true });
+    }, "Recalling the scene…");
+  const saveEditor = (e: Editing, name: string) =>
+    act(async () => {
+      const r = await getHass().callWS<StoreResult>({ type: "hue_remote_scenes/store", group_id: group.id, name, ...(e.scene_id != null ? { scene_id: e.scene_id } : {}) });
+      setEditing(null);
+      onChanged();
+      return storeText("Saved")(r);
+    }, "Saving the scene in the lights…");
+  const cancelEditor = (e: Editing) => {
+    setEditing(null);
+    if (e.restore && e.scene_id != null) recall(e.scene_id, e.name ?? "the scene");
+  };
   const rename = (id: number, name: string) => run({ type: "hue_remote_scenes/rename", scene_id: id, name }, () => "Renamed");
   const remove = (id: number, name: string) =>
     confirm(`Delete "${name}" from the lights?`) &&
@@ -116,7 +145,7 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
 
       {capable.length > 0 && dial && (
         <>
-          <h3>{group.dials.map((d) => d.name).join(", ")} buttons <span className="hint">tap to try · ⋮ to save the lights' current state there</span></h3>
+          <h3>{group.dials.map((d) => d.name).join(", ")} buttons <span className="hint">tap to try · ⋮ to edit</span></h3>
           <div className="tiles">
             {dial.buttons.map((b) => {
               const scene = group.scenes.find((s) => s.id === b.scene_id);
@@ -129,15 +158,17 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
                   busy={!!busy}
                   onRecall={() => recall(scene.id, scene.name)}
                   onOverwrite={() => overwrite(scene.id, scene.name)}
+                  onEdit={() => edit(scene.id, scene.name)}
                   onRename={(name) => rename(scene.id, name)}
+                  onDelete={() => remove(scene.id, scene.name)}
                 />
               ) : (
                 <AddTile
                   key={b.scene_id}
                   badge={dots(b.label)}
-                  label="Save current state"
+                  label="Set a scene"
                   busy={!!busy}
-                  onSave={(name) => run({ type: "hue_remote_scenes/store", scene_id: b.scene_id, name }, storeText("Saved"))}
+                  onOpen={() => setEditing({ title: `Scene for ${/^\d/.test(b.label) ? `button ${parseInt(b.label, 10)}` : b.label}`, saveLabel: "Save scene", scene_id: b.scene_id })}
                 />
               );
             })}
@@ -157,17 +188,32 @@ function GroupScenes({ getHass, group, titled, onChanged }: { getHass: () => Has
                 busy={!!busy}
                 onRecall={() => recall(s.id, s.name)}
                 onOverwrite={() => overwrite(s.id, s.name)}
+                onEdit={() => edit(s.id, s.name)}
                 onRename={(name) => rename(s.id, name)}
                 onDelete={() => remove(s.id, s.name)}
               />
             ))}
-            <AddTile label="Save current state" busy={!!busy} onSave={(name) => run({ type: "hue_remote_scenes/store", name }, storeText("Saved"))} />
+            <AddTile label="New scene" busy={!!busy} onOpen={() => setEditing({ title: "New scene", saveLabel: "Save scene" })} />
           </div>
         </>
       )}
 
       {busy && <div className="status busy">{busy}</div>}
       {result && <div className={`status ${result.kind}`}>{result.text}</div>}
+
+      {editing && (
+        <SceneEditor
+          getHass={getHass}
+          group={group}
+          title={editing.title}
+          name={editing.name}
+          saveLabel={editing.saveLabel}
+          busy={busy}
+          result={result}
+          onSave={(name) => saveEditor(editing, name)}
+          onCancel={() => cancelEditor(editing)}
+        />
+      )}
 
       <h3>Lights <span className="hint">{group.members.filter((m) => isOn(hass, m.entity_id)).length ? `${group.members.filter((m) => isOn(hass, m.entity_id)).length} on` : "all off"}</span></h3>
       <div className="list">

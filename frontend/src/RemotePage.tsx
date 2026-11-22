@@ -91,6 +91,7 @@ interface PartProps {
 }
 
 const SAVE_CURRENT = -1;
+const CLEAR = -2;
 
 /** A set-up Tap Dial or gen 2 dimmer: the room it controls, then a scene per button. */
 function SceneButtons({ getHass, remote, group, busy, act, onChanged, onChangeLights }: PartProps & { group: Group; onChangeLights: () => void }) {
@@ -104,6 +105,15 @@ function SceneButtons({ getHass, remote, group, busy, act, onChanged, onChangeLi
 
   const choose = (label: string, sid: number, value: number) => {
     const current = group.scenes.find((s) => s.id === sid);
+    if (value === CLEAR) {
+      if (!current || !confirm(`Clear ${label}? This deletes "${current.name}" from the lights.`)) return;
+      act(async () => {
+        const r = await getHass().callWS<{ failed: Record<string, string> }>({ type: "hue_remote_scenes/delete", group_id: group.id, scene_id: sid });
+        onChanged();
+        return Object.keys(r.failed).length ? `Cleared ${label}, but some lights didn't answer and may still have it.` : `Cleared ${label}.`;
+      });
+      return;
+    }
     if (value === SAVE_CURRENT) {
       const name = prompt(`Name for ${label}'s scene`, current?.name ?? "");
       if (!name?.trim()) return;
@@ -168,6 +178,7 @@ function SceneButtons({ getHass, remote, group, busy, act, onChanged, onChangeLi
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   <option value={SAVE_CURRENT}>Save the lights' current state…</option>
+                  {scene && <option value={CLEAR}>Clear this button</option>}
                 </select>
               </label>
             </div>

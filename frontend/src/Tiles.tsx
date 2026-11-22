@@ -21,12 +21,13 @@ interface TileProps {
   busy: boolean;
   onRecall: () => void;
   onOverwrite: () => void;
+  onEdit?: () => void;
   onRename?: (name: string) => void;
   onDelete?: () => void;
 }
 
-/** A big tile in the scene's colours: tap to recall, ⋮ to save over, rename or delete. */
-export function SceneTile({ scene, badge, warn, busy, onRecall, onOverwrite, onRename, onDelete }: TileProps) {
+/** A big tile in the scene's colours: tap to recall, ⋮ to edit, save over, rename or delete. */
+export function SceneTile({ scene, badge, warn, busy, onRecall, onOverwrite, onEdit, onRename, onDelete }: TileProps) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(scene.name);
@@ -63,8 +64,13 @@ export function SceneTile({ scene, badge, warn, busy, onRecall, onOverwrite, onR
         <>
           <div className="menu-backdrop" onClick={() => setMenu(false)} />
           <div className="menu" role="menu">
+            {onEdit && (
+              <button role="menuitem" onClick={() => { setMenu(false); onEdit(); }}>
+                <Icon name="palette-outline" /> Edit colours
+              </button>
+            )}
             <button role="menuitem" onClick={() => { setMenu(false); onOverwrite(); }}>
-              <Icon name="content-save-edit-outline" /> Save the lights' current state here
+              <Icon name="content-save-edit-outline" /> Save current state here
             </button>
             {onRename && (
               <button role="menuitem" onClick={() => { setMenu(false); setName(scene.name); setEditing(true); }}>
@@ -83,14 +89,15 @@ export function SceneTile({ scene, badge, warn, busy, onRecall, onOverwrite, onR
   );
 }
 
-/** A dashed tile that saves the lights' current state: a new scene, or a remote button's empty slot. */
-export function AddTile({ badge, label, busy, onSave }: { badge?: string; label: string; busy: boolean; onSave: (name: string) => void }) {
+/** A dashed tile for a new scene or a remote button's empty slot: opens onOpen (the scene
+ * editor) if given, else asks for a name and saves the lights' current state. */
+export function AddTile({ badge, label, busy, onSave, onOpen }: { badge?: string; label: string; busy: boolean; onSave?: (name: string) => void; onOpen?: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
 
   if (!open)
     return (
-      <button className="tile add" disabled={busy} onClick={() => setOpen(true)}>
+      <button className="tile add" disabled={busy} onClick={() => (onOpen ? onOpen() : setOpen(true))}>
         {badge ? <span className="add-dots">{badge}</span> : <Icon name="plus" />}
         <span>{label}</span>
       </button>
@@ -101,7 +108,7 @@ export function AddTile({ badge, label, busy, onSave }: { badge?: string; label:
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim()) return;
-        onSave(name);
+        onSave?.(name);
         setName("");
         setOpen(false);
       }}
