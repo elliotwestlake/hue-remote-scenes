@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections import deque
 from time import monotonic
 from typing import Any
 
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from . import zigbee
-from .const import SCENE_NAME_MAX
+from .const import SCENE_NAME_MAX, SIGNAL_ACTIVITY
 from .entities import scene_colors
 from .logic import (
+    ACTIVITY_MAX,
     SceneError,
     clean_cycle,
     clean_name,
@@ -21,6 +25,7 @@ from .logic import (
     import_scenes,
     merge_membership,
     next_scene_id,
+    plain,
     results_summary,
 )
 from .store import SceneStore
@@ -34,6 +39,16 @@ class SceneManager:
         self.store = store
         # ieee -> (index of the scene last recalled, monotonic time of that press).
         self._cycle_pos: dict[str, tuple[int, float]] = {}
+        # Diagnostics, runtime only: ieee -> recent events, and the last binding table read.
+        self.activity: dict[str, deque[dict[str, Any]]] = {}
+        self.tables: dict[str, list[dict[str, Any]]] = {}
+
+    @callback
+    def record(self, ieee: str, source: str, **entry: Any) -> None:
+        """Remember something a remote sent (or what we did about it), and tell open panels."""
+        item = {"time": time.time(), "source": source, **entry}
+        self.activity.setdefault(ieee, deque(maxlen=ACTIVITY_MAX)).append(item)
+        async_dispatcher_send(self.hass, SIGNAL_ACTIVITY, ieee, item)
 
     def _require(self, group_id: int, scene_id: int) -> dict[str, Any]:
         scene = self.store.scene(group_id, scene_id)
@@ -141,14 +156,32 @@ class SceneManager:
 
     @callback
     def async_handle_zha_event(self, event: Event) -> None:
-        """zha_event listener: a remote with a cycle sent its trigger press."""
+        """zha_event listener: log it for diagnostics; a remote with a cycle may recall a scene."""
         ieee = str(event.data.get("device_ieee"))
-        if self.store.cycle(ieee) is None:
-            return
-        trigger = cycle_trigger(zigbee.device_model(self.hass, ieee))
-        if trigger is None or event.data.get("command") != trigger[0]:
-            return
-        self.hass.async_create_task(self.async_cycle(ieee), f"hue_remote_scenes cycle {ieee}")
+        command = event.data.get("command")
+        model = zigbee.device_model(self.hass, ieee)
+        trigger = cycle_trigger(model)
+        cycle = self.store.cycle(ieee)
+        if cycle is not None and trigger is not None and command == trigger[0]:
+            note = "cycles to the next scene"
+        elif cycle is not None and trigger is not None:
+            note = f"not '{trigger[0]}', so no scene"
+        elif trigger is not None:
+            note = "no scene cycle set up"
+        else:
+            note = None
+        self.record(
+            ieee,
+            "zha_event",
+            endpoint=event.data.get("endpoint_id"),
+            cluster=event.data.get("cluster_id"),
+            command=command,
+            args=plain(event.data.get("args")),
+            params=plain(event.data.get("params")),
+            note=note,
+        )
+        if note == "cycles to the next scene":
+            self.hass.async_create_task(self.async_cycle(ieee), f"hue_remote_scenes cycle {ieee}")
 
     async def async_cycle(self, ieee: str) -> int | None:
         """Recall the remote's next scene (the first, after a pause). Returns its id."""
@@ -159,6 +192,7 @@ class SceneManager:
         # Scenes deleted since the cycle was set are skipped.
         scene_ids = [s for s in cycle["scene_ids"] if self.store.scene(group_id, s) is not None]
         if not scene_ids:
+            self.record(ieee, "ha", note="none of the cycle's scenes are saved any more")
             return None
         now = monotonic()
         last_index, last_press = self._cycle_pos.get(ieee, (None, None))
@@ -168,5 +202,13 @@ class SceneManager:
             await zigbee.async_recall(self.hass, group_id, scene_ids[index])
         except HomeAssistantError as err:
             _LOGGER.warning("Couldn't recall scene %s for remote %s: %s", scene_ids[index], ieee, err)
+            self.record(ieee, "ha", note=f"couldn't recall scene {scene_ids[index]}: {err}")
             return None
+        scene = self.store.scene(group_id, scene_ids[index]) or {}
+        self.record(
+            ieee,
+            "ha",
+            note=f"recalled {scene.get('name', 'scene')} ({index + 1} of {len(scene_ids)}) "
+            f"in group {group_id}",
+        )
         return scene_ids[index]

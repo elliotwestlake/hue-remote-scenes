@@ -804,3 +804,77 @@ async def test_dimmer_gen1_scene_cycle(hass: HomeAssistant, zigbee, hass_ws_clie
         assert await press() == []
     (group,) = (await ws(12, type="hue_remote_scenes/groups"))["result"]["groups"]
     assert group["cycles"] == []
+
+
+async def test_remote_diagnostics(hass: HomeAssistant, zigbee, hass_ws_client) -> None:
+    """Diagnostics: device details, checks, live zha_events / raw frames / cycle results."""
+    app = zigbee
+    dimmer = _add_remote(app, "00:17:88:01:00:00:00:06", 0x1006, RWL021_EPS, "RWL021", "Old dimmer")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    ieee = str(dimmer.ieee)
+
+    async def ws(msg_id, **msg):
+        await client.send_json({"id": msg_id, **msg})
+        return await client.receive_json()
+
+    r = (await ws(1, type="hue_remote_scenes/diagnostics", ieee=ieee))["result"]
+    assert r["info"]["model"] == "RWL021" and r["info"]["nwk"] == "0x1006"
+    assert [e["id"] for e in r["info"]["endpoints"]] == [1, 2]
+    assert 0xFC00 in [c["id"] for c in r["info"]["endpoints"][1]["in"]]
+    assert r["activity"] == [] and r["table"] is None
+    assert any("No presses seen" in c["text"] for c in r["checks"])
+
+    # The full binding table, including the coordinator entry ZHA makes for 0xFC00.
+    coord = app.gateway.coordinator_zha_device.ieee
+    app.bindings[dimmer.ieee].append(zdo_t.Binding(
+        SrcAddress=dimmer.ieee, SrcEndpoint=2, ClusterId=0xFC00,
+        DstAddress=zdo_t.MultiAddress(addrmode=3, ieee=coord, endpoint=1)))
+    r = (await ws(2, type="hue_remote_scenes/bindings", ieee=ieee))["result"]
+    assert r["bindings"] == [] and r["table"][0]["cluster"] == 0xFC00 and r["table"][0]["addrmode"] == 3
+
+    assert (await ws(3, type="hue_remote_scenes/subscribe_activity", ieee=ieee))["success"]
+
+    def zha_event(command):
+        hass.bus.async_fire("zha_event", {"device_ieee": ieee, "endpoint_id": 2, "cluster_id": 0xFC00,
+                                          "command": command, "args": {"button": 1}, "params": {}})
+
+    zha_event("on_press")
+    await hass.async_block_till_done()
+    msg = await client.receive_json()
+    assert msg["id"] == 3 and msg["event"]["entry"]["command"] == "on_press"
+    assert msg["event"]["entry"]["note"] == "no scene cycle set up"
+
+    # A raw On command from endpoint 1 (as when it's bound to the coordinator).
+    hdr = foundation.ZCLHeader.cluster(7, 0x01, direction=foundation.Direction.Client_to_Server)
+    hdr.frame_control = hdr.frame_control.replace(disable_default_response=True)
+    app._deliver(dimmer, 1, 260, 0x0006, hdr.serialize())
+    msg = await client.receive_json()
+    assert msg["event"]["entry"]["source"] == "zigbee"
+    assert msg["event"]["entry"]["command"] == "on" and msg["event"]["entry"]["cluster"] == 6
+
+    # With a cycle: the press recalls, and the result shows up too.
+    assert (await ws(4, type="hue_remote_scenes/store", group_id=GROUP, name="Relax"))["success"]
+    assert (await ws(5, type="hue_remote_scenes/set_cycle", ieee=ieee, group_id=GROUP, scene_ids=[1]))["success"]
+    zha_event("on_press")
+    await hass.async_block_till_done()
+    entries = [(await client.receive_json())["event"]["entry"] for _ in range(2)]
+    assert entries[0]["note"] == "cycles to the next scene"
+    assert entries[1]["source"] == "ha" and entries[1]["note"].startswith("recalled Relax (1 of 1)")
+
+    # Test press from the panel, without the remote.
+    await client.send_json({"id": 6, "type": "hue_remote_scenes/cycle_now", "ieee": ieee})
+    notes, result = [], None
+    while result is None:
+        msg = await client.receive_json()
+        if msg["id"] == 6:
+            result = msg["result"]
+        else:
+            notes.append(msg["event"]["entry"]["note"])
+    assert result == {"scene_id": 1}
+    assert notes[0] == "test press from the panel"
+
+    r = (await ws(7, type="hue_remote_scenes/diagnostics", ieee=ieee))["result"]
+    assert [a["command"] for a in r["activity"] if a["source"] == "zha_event"] == ["on_press", "on_press"]
+    assert r["table"] and any("sends Hue button presses" in c["text"] for c in r["checks"])
+    assert not any(c["level"] == "warn" and "on_press" in c["text"] for c in r["checks"])

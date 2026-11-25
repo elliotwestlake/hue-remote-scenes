@@ -121,3 +121,69 @@ def test_stale_bindings():
     assert L.remove_entries(table, stale) == [ours, to_coord]
     # A dial's own scene group is kept too.
     assert L.stale_bindings(table, {5, 0x2A2A}, coord) == [to_bulb]
+
+GEN1_EPS = [{"id": 1, "in": [0], "out": [0, 3, 4, 6, 8, 5]}, {"id": 2, "in": [0, 1, 3, 15, 0xFC00], "out": [25]}]
+COORD = "00:00:00:00:00:00:00:00"
+
+
+def _checks(**kw):
+    args = dict(model="RWL021", quirk_applied=True, endpoints=GEN1_EPS, bound={}, table=None,
+                coordinator=COORD, dial=None, cycle=None, commands_seen=[])
+    args.update(kw)
+    return L.remote_checks(**args)
+
+
+def _warns(checks):
+    return [c["text"] for c in checks if c["level"] == "warn"]
+
+
+def test_remote_checks_gen1_fresh():
+    checks = _checks()
+    assert not _warns(checks)
+    assert any("binding table not read" in c["text"].lower() for c in checks)
+    assert any("no presses seen" in c["text"].lower() for c in checks)
+
+
+def test_remote_checks_gen1_problems():
+    # No quirk: presses can't become events.
+    assert any("quirk isn't applied" in w for w in _warns(_checks(quirk_applied=False)))
+    # Table read: 0xFC00 not sent to the coordinator, no group.
+    table = [{"endpoint": 1, "cluster": 6, "addrmode": 3, "ieee": "00:17:88:00:00:00:00:09", "dst_endpoint": 11}]
+    warns = _warns(_checks(table=table))
+    assert any("0xFC00" in w and "Reconfigure" in w for w in warns)
+    assert any("no group" in w for w in warns)
+    # Presses arrive, but never the trigger.
+    warns = _warns(_checks(commands_seen=["off_press", "up_hold"]))
+    assert any("'on_press'" in w for w in warns)
+
+
+def test_remote_checks_gen1_all_good():
+    table = [
+        {"endpoint": 2, "cluster": 0xFC00, "addrmode": 3, "ieee": COORD.upper(), "dst_endpoint": 1},
+        {"endpoint": 1, "cluster": 6, "addrmode": 1, "group_id": 5},
+    ]
+    checks = _checks(table=table, bound={"5": [6, 8]}, commands_seen=["on_press", "on_short_release"],
+                     cycle={"group_id": 5, "scene_ids": [1, 2]})
+    assert not _warns(checks)
+    assert any("on_press, on_short_release" in c["text"] for c in checks)
+
+
+def test_remote_checks_unknown_and_dial():
+    assert any("doesn't know" in w for w in _warns(_checks(model="XYZ")))
+    checks = _checks(model="RWL022", endpoints=[{"id": 1, "in": [0, 0xFC00], "out": [5, 6, 8]}])
+    assert any("own group isn't known" in c["text"] for c in checks)
+    assert not any("scene cycle" in c["text"].lower() for c in checks)
+
+
+def test_plain():
+    import enum
+
+    class E(enum.IntEnum):
+        on = 1
+
+    class Schema:
+        def as_dict(self):
+            return {"group_id": 5, "mode": E.on, "raw": b"\x01"}
+
+    assert L.plain([Schema(), (1, 2.5), None, True]) == [
+        {"group_id": 5, "mode": "on", "raw": "b'\\x01'"}, [1, 2.5], None, True]
