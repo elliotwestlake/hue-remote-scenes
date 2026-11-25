@@ -14,6 +14,8 @@ STORAGE_VERSION = 1
 # Fired (no args) whenever the stored scenes change, so scene entities can be
 # added/removed and open panels can refresh.
 SIGNAL_SCENES = f"{DOMAIN}_scenes"
+# (ieee, entry): a remote sent something, or we did something about it (diagnostics).
+SIGNAL_ACTIVITY = f"{DOMAIN}_activity"
 
 # Zigbee cluster ids.
 CLUSTER_ON_OFF = 0x0006

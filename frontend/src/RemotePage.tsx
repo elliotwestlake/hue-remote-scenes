@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CycleSection } from "./CycleSection";
+import { DiagnosticsSection } from "./Diagnostics";
 import { DialSetup } from "./DialSetup";
 import { Icon } from "./Icon";
 import { RemoteIcon } from "./RemoteIcon";
@@ -20,6 +21,7 @@ interface Props {
 export function RemotePage({ getHass, remote, groups, onBack, onChanged }: Props) {
   const { busy, result, act } = useAction();
   const [setup, setSetup] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(false);
   const hass = getHass();
   const status = remoteStatus(remote, groups);
   const progress = dialProgress(remote, groups);
@@ -73,6 +75,20 @@ export function RemotePage({ getHass, remote, groups, onBack, onChanged }: Props
 
       {busy && <div className="status busy">{busy}</div>}
       {result && <div className={`status ${result.kind}`}>{result.text}</div>}
+
+      {diagnostics ? (
+        <section className="card">
+          <DiagnosticsSection getHass={getHass} remote={remote} groups={groups} busy={!!busy} act={act} onChanged={onChanged} />
+          <div className="actions">
+            <span className="spacer" />
+            <button className="ghost" onClick={() => setDiagnostics(false)}>Hide diagnostics</button>
+          </div>
+        </section>
+      ) : (
+        <button className="ghost diag-open" onClick={() => setDiagnostics(true)}>
+          <Icon name="stethoscope" /> Diagnostics: what this remote sends
+        </button>
+      )}
 
       <p className="muted small">
         {remote.checked ? `Bindings last checked ${ago(remote.checked)}.` : remote.last_seen ? `Last seen ${ago(remote.last_seen)}.` : ""} Battery remotes

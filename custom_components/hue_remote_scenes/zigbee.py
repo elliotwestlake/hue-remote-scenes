@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from zigpy.exceptions import ZigbeeException
@@ -23,7 +24,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 
 from .const import CLUSTER_ON_OFF, CLUSTER_SCENES, REFRESH_ATTRS, REFRESH_DELAY, REMOTE_CLUSTERS
-from .logic import member_key, parse_member_key, remote_endpoints
+from .logic import member_key, parse_member_key, plain, remote_endpoints
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -449,3 +450,113 @@ async def async_create_group(
     existing = {member_key(str(m.device.ieee), int(m.endpoint_id)) for m in group.members}
     if missing := [ref for key, ref in refs.items() if key not in existing]:
         await group.async_add_members(missing)
+
+
+# --- Diagnostics ---
+
+
+def _cluster_list(clusters: dict[int, Any]) -> list[dict[str, Any]]:
+    return [
+        {"id": int(cid), "name": getattr(c, "name", None) or getattr(c, "ep_attribute", None)}
+        for cid, c in sorted(clusters.items())
+    ]
+
+
+def remote_info(hass: HomeAssistant, ieee: str) -> dict[str, Any]:
+    """Everything ZHA and zigpy know about a device, for the diagnostics card."""
+    gateway = _gateway(hass)
+    device = gateway.devices.get(EUI64.convert(ieee))
+    if device is None:
+        raise HomeAssistantError(f"ZHA has no device {ieee}")
+    zdev = device.device
+
+    def attr(obj: Any, name: str) -> Any:
+        try:
+            value = getattr(obj, name, None)
+        except Exception:  # noqa: BLE001 - diagnostics must not fail on one odd property
+            return None
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+        return str(value)
+
+    return {
+        "ieee": str(device.ieee),
+        "name": device.name,
+        "model": device.model,
+        "manufacturer": device.manufacturer,
+        "nwk": f"0x{int(zdev.nwk):04X}" if getattr(zdev, "nwk", None) is not None else None,
+        "quirk": attr(device, "quirk_class") or f"{type(zdev).__module__}.{type(zdev).__name__}",
+        "quirk_applied": attr(device, "quirk_applied"),
+        "firmware": attr(device, "firmware_version") or attr(device, "sw_version"),
+        "power_source": attr(device, "power_source"),
+        "available": attr(device, "available"),
+        "lqi": attr(device, "lqi"),
+        "rssi": attr(device, "rssi"),
+        "last_seen": _timestamp(getattr(device, "last_seen", None)),
+        "endpoints": [
+            {
+                "id": int(ep_id),
+                "profile": f"0x{int(ep.profile_id):04X}" if getattr(ep, "profile_id", None) is not None else None,
+                "device_type": f"0x{int(ep.device_type):04X}" if getattr(ep, "device_type", None) is not None else None,
+                "in": _cluster_list(ep.in_clusters),
+                "out": _cluster_list(ep.out_clusters),
+            }
+            for ep_id, ep in sorted(zdev.endpoints.items())
+            if ep_id != 0
+        ],
+    }
+
+
+def listen_remote(hass: HomeAssistant, ieee: str, record) -> Callable[[], None]:
+    """Call record(**entry) for every ZCL command and attribute report from this device.
+
+    This is below ZHA: it shows frames that reach the coordinator even when ZHA doesn't
+    turn them into a zha_event. Returns a function that stops listening.
+    """
+    device = _zigpy_device(hass, ieee)
+    attached: list[tuple[Any, Any]] = []
+
+    class _Listener:
+        def __init__(self, endpoint_id: int, cluster: Any, outgoing: bool) -> None:
+            self.endpoint_id = endpoint_id
+            self.cluster = cluster
+            self.outgoing = outgoing
+
+        def _base(self) -> dict[str, Any]:
+            return {"endpoint": self.endpoint_id, "cluster": int(self.cluster.cluster_id)}
+
+        def cluster_command(self, tsn: int, command_id: int, args: Any) -> None:
+            # What a remote sends from its out (client) clusters are server commands.
+            defs = self.cluster.server_commands if self.outgoing else self.cluster.client_commands
+            definition = defs.get(command_id)
+            record(
+                **self._base(),
+                command=definition.name if definition else f"0x{command_id:02X}",
+                args=plain(args),
+            )
+
+        def attribute_updated(self, attrid: int, value: Any, *_args: Any) -> None:
+            definition = self.cluster.attributes.get(attrid)
+            record(
+                **self._base(),
+                command=f"report {definition.name if definition else f'0x{attrid:04X}'}",
+                args=plain(value),
+            )
+
+    for ep_id, endpoint in device.endpoints.items():
+        if ep_id == 0:
+            continue
+        for clusters, outgoing in ((endpoint.in_clusters, False), (endpoint.out_clusters, True)):
+            for cluster in clusters.values():
+                listener = _Listener(int(ep_id), cluster, outgoing)
+                cluster.add_listener(listener)
+                attached.append((cluster, listener))
+
+    def _stop() -> None:
+        for cluster, listener in attached:
+            try:
+                cluster.remove_listener(listener)
+            except (KeyError, ValueError):
+                pass
+
+    return _stop

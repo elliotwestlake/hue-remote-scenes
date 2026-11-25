@@ -225,6 +225,27 @@ main.remotes { max-width: 860px; }
 .row-detail { display: block; margin-top: 2px; }
 .row-icon { width: 36px; height: 36px; border-radius: 10px; flex: none; background: var(--hl-soft); color: var(--secondary-text-color); }
 .row-icon.big { width: 44px; height: 44px; border-radius: 12px; --mdc-icon-size: 24px; }
+/* Diagnostics */
+.diag .inline-row h3 { margin: 0; }
+.diag .row-icon { width: 28px; height: 28px; border-radius: 8px; --mdc-icon-size: 18px; }
+.check.ok .row-icon { color: var(--success-color, #43a047); }
+.check.warn { background: color-mix(in srgb, var(--hl-warn) 10%, transparent); }
+.check.warn .row-icon { color: var(--hl-warn); }
+.check.info .row-icon { color: var(--info-color, var(--primary-color)); }
+.list-row.check.warn:hover { background: color-mix(in srgb, var(--hl-warn) 10%, transparent); }
+.check-label { display: inline-flex; align-items: center; gap: 6px; }
+.log { max-height: 420px; overflow-y: auto; }
+.log-row { gap: 10px; padding: 8px 14px; align-items: flex-start; }
+.log-row .chip { flex: none; font-size: 11px; padding: 2px 8px; }
+.log-time { flex: none; font-variant-numeric: tabular-nums; padding-top: 2px; }
+.log-body { min-width: 0; overflow-wrap: anywhere; }
+.log-args { display: block; margin-top: 3px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-note { display: block; margin-top: 2px; color: var(--secondary-text-color); }
+.log-row.ha .log-note { color: var(--primary-text-color); margin-top: 0; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.kv-row { display: contents; }
+.kv dt, .kv dd { margin: 0; overflow-wrap: anywhere; }
+.ep .row-detail { overflow-wrap: anywhere; }
 .light-dot { width: 30px; height: 30px; border-radius: 50%; flex: none; background: var(--hl-off-fill); }
 .btn-icon { width: 44px; height: 44px; border-radius: 12px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--hl-soft); font-size: 10px; letter-spacing: 1.5px; color: var(--primary-text-color); }
 .recall { border-color: transparent; background: color-mix(in srgb, var(--hl-light) 16%, transparent); color: var(--hl-light); }

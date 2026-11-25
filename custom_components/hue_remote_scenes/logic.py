@@ -247,3 +247,117 @@ def remove_entries(
 ) -> list[dict[str, Any]]:
     """entries without the ones in removed (compared by value)."""
     return [e for e in entries if e not in removed]
+
+
+# --- Diagnostics: what a remote reports and sends, and what looks wrong ---
+
+CLUSTER_HUE_BUTTONS = 0xFC00  # Hue remotes' button notifications (ZHA's Hue quirks)
+ACTIVITY_MAX = 40  # recent events kept per remote (runtime only)
+
+
+def remote_checks(
+    *,
+    model: str | None,
+    quirk_applied: bool | None,
+    endpoints: list[dict[str, Any]],
+    bound: dict[str, list[int]],
+    table: list[dict[str, Any]] | None,
+    coordinator: str,
+    dial: dict[str, Any] | None,
+    cycle: dict[str, Any] | None,
+    commands_seen: list[str],
+) -> list[dict[str, str]]:
+    """What's set up and what's missing, as [{"level": "ok"|"warn"|"info", "text"}].
+
+    endpoints: [{"id", "in": [cluster ids], "out": [cluster ids]}] (every endpoint).
+    table: the remote's whole binding table, if it has been read since HA started.
+    commands_seen: zha_event commands from this remote since HA started, oldest first.
+    """
+    out: list[dict[str, str]] = []
+
+    def add(level: str, text: str) -> None:
+        out.append({"level": level, "text": text})
+
+    buttons = dial_buttons(model)
+    trigger = cycle_trigger(model)
+    if buttons:
+        add("ok", f"ZHA reports model {model}: its scene buttons recall scenes on their own group.")
+    elif trigger:
+        add("ok", f"ZHA reports model {model}: Home Assistant can cycle scenes on '{trigger[0]}' presses.")
+    else:
+        add("warn", f"ZHA reports model {model or 'unknown'}, which this integration doesn't know, "
+                    "so it can only bind it to a group.")
+
+    has_hue_cluster = any(CLUSTER_HUE_BUTTONS in ep.get("in", []) for ep in endpoints)
+    if trigger:
+        if has_hue_cluster and quirk_applied is not False:
+            add("ok", "ZHA's Hue quirk is applied, so it turns the button cluster (0xFC00) into events.")
+        else:
+            add("warn", "ZHA's Hue quirk isn't applied"
+                        + ("" if has_hue_cluster else " (no 0xFC00 button cluster)")
+                        + ", so presses won't reach Home Assistant as events. "
+                        "Remove the remote from ZHA and pair it again.")
+            has_hue_cluster = False
+
+    if bound:
+        add("ok", f"Bound to {len(bound)} group{'s' if len(bound) != 1 else ''} (as last bound or read).")
+    else:
+        add("info", "Not bound to a group, as far as we know: its buttons won't switch lights by themselves.")
+
+    if table is None:
+        add("info", "Binding table not read yet: press a button on the remote, then Read binding table.")
+    else:
+        coord = coordinator.lower()
+        to_ha = {
+            e["cluster"] for e in table
+            if e.get("addrmode") == 3 and str(e.get("ieee", "")).lower() == coord
+        }
+        if trigger and has_hue_cluster:
+            if CLUSTER_HUE_BUTTONS in to_ha:
+                add("ok", "The binding table sends Hue button presses (0xFC00) to Home Assistant.")
+            else:
+                add("warn", "The binding table doesn't send Hue button presses (0xFC00) to Home Assistant. "
+                            "In ZHA, open the remote and choose Reconfigure (press a button first to wake it).")
+        groups_in_table = {e["group_id"] for e in table if e.get("addrmode") == 1}
+        if not groups_in_table:
+            add("warn", "The binding table has no group: Bind it to a group.")
+
+    if commands_seen:
+        distinct = list(dict.fromkeys(commands_seen))
+        add("ok", f"Presses reach Home Assistant ({len(commands_seen)} since it started): "
+                  + ", ".join(distinct[-8:]) + ".")
+        if trigger and trigger[0] not in commands_seen:
+            add("warn", f"None of them was '{trigger[0]}', the press that cycles scenes.")
+    else:
+        add("info", "No presses seen since Home Assistant started. Press a button and watch Activity.")
+
+    if trigger:
+        if cycle:
+            add("ok", f"Scene cycle set up: {len(cycle.get('scene_ids', []))} scene(s) in group "
+                      f"{cycle.get('group_id')}.")
+        else:
+            add("info", "No scene cycle set up yet.")
+    if buttons:
+        if dial:
+            add("ok", f"Its own group is {dial.get('group_id')}.")
+        else:
+            add("info", "Its own group isn't known yet: run the set-up.")
+    return out
+
+
+def plain(value: Any) -> Any:
+    """A zigpy command's args (schema objects, enums, lists) as JSON-friendly values."""
+    if hasattr(value, "as_dict"):
+        return {k: plain(v) for k, v in value.as_dict().items()}
+    if isinstance(value, dict):
+        return {str(k): plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [plain(v) for v in value]
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int):
+        name = getattr(value, "name", None)
+        return name if isinstance(name, str) else int(value)
+    if isinstance(value, (float, str)):
+        return value
+    return str(value)

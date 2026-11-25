@@ -16,6 +16,9 @@ hue_remote_scenes/lights                                    -> lights that can j
 hue_remote_scenes/create_group {group_id, name, members}     -> ZHA group with that exact id (or add members)
 hue_remote_scenes/set_cycle {ieee, group_id?, scene_ids?}    -> HA recalls the next scene on a button press
                                                                (no group_id: stop)
+hue_remote_scenes/cycle_now {ieee}                           -> what the cycle press does, without the remote
+hue_remote_scenes/diagnostics {ieee}                         -> device details, checks, recent activity, last table
+hue_remote_scenes/subscribe_activity {ieee}                  -> pushes {entry} for each press / frame / action
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ from homeassistant.util import dt as dt_util
 
 from . import zigbee
 from .areas import area_icons, device_area, group_areas
-from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_SCENES
+from .const import DOMAIN, REMOTE_CLUSTERS, SIGNAL_ACTIVITY, SIGNAL_SCENES
 from .entities import battery_entity, group_light_entity, light_entity
 from .logic import (
     SceneError,
@@ -43,6 +46,7 @@ from .logic import (
     cycle_trigger,
     dial_buttons,
     group_bindings,
+    remote_checks,
     remove_entries,
     stale_bindings,
 )
@@ -70,6 +74,9 @@ def async_register(hass: HomeAssistant) -> None:
         ws_lights,
         ws_create_group,
         ws_set_cycle,
+        ws_cycle_now,
+        ws_diagnostics,
+        ws_subscribe_activity,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -251,11 +258,14 @@ async def ws_remotes(hass, connection, msg, manager: SceneManager):
 @websocket_api.async_response
 @_handler
 async def ws_bindings(hass, connection, msg, manager: SceneManager):
-    bindings = group_bindings(await zigbee.async_binding_table(hass, msg["ieee"]))
+    table = await zigbee.async_binding_table(hass, msg["ieee"])
+    manager.tables[msg["ieee"]] = table
+    bindings = group_bindings(table)
     await manager.store.async_set_remote(
         msg["ieee"], bindings_by_group(bindings), checked=dt_util.utcnow().isoformat()
     )
-    return {"bindings": bindings}
+    # table: every entry, including the ones to Home Assistant (the coordinator) and devices.
+    return {"bindings": bindings, "table": table}
 
 
 @websocket_api.websocket_command(
@@ -306,6 +316,7 @@ async def _remove_other_bindings(
         keep.add(int(dial["group_id"]))  # its scene buttons need their own group
     stale = stale_bindings(table, keep, zigbee.coordinator_ieee(hass))
     removed, failed = await zigbee.async_unbind_entries(hass, ieee, stale)
+    manager.tables[ieee] = remove_entries(table, removed)
     # We've just seen the whole table, so remember it as checked.
     await manager.store.async_set_remote(
         ieee,
@@ -373,3 +384,88 @@ async def ws_create_group(hass, connection, msg, manager: SceneManager):
 async def ws_set_cycle(hass, connection, msg, manager: SceneManager):
     cycle = await manager.async_set_cycle(msg["ieee"], msg.get("group_id"), msg["scene_ids"])
     return {"cycle": cycle}
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "hue_remote_scenes/cycle_now", vol.Required("ieee"): str}
+)
+@websocket_api.async_response
+@_handler
+async def ws_cycle_now(hass, connection, msg, manager: SceneManager):
+    if manager.store.cycle(msg["ieee"]) is None:
+        raise SceneError("This remote has no scene cycle")
+    manager.record(msg["ieee"], "ha", note="test press from the panel")
+    return {"scene_id": await manager.async_cycle(msg["ieee"])}
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "hue_remote_scenes/diagnostics", vol.Required("ieee"): str}
+)
+@websocket_api.async_response
+@_handler
+async def ws_diagnostics(hass, connection, msg, manager: SceneManager):
+    ieee = msg["ieee"]
+    info = zigbee.remote_info(hass, ieee)
+    coordinator = zigbee.coordinator_ieee(hass)
+    activity = list(manager.activity.get(ieee, []))
+    table = manager.tables.get(ieee)
+    checks = remote_checks(
+        model=info["model"],
+        quirk_applied=info["quirk_applied"],
+        endpoints=[
+            {"id": ep["id"], "in": [c["id"] for c in ep["in"]], "out": [c["id"] for c in ep["out"]]}
+            for ep in info["endpoints"]
+        ],
+        bound=manager.store.remote_groups(ieee),
+        table=table,
+        coordinator=coordinator,
+        dial=manager.store.dial(ieee),
+        cycle=manager.store.cycle(ieee),
+        commands_seen=[str(a["command"]) for a in activity if a["source"] == "zha_event"],
+    )
+    return {
+        "info": info,
+        "coordinator": coordinator,
+        "checks": checks,
+        "activity": activity,
+        "table": table,
+        "store": manager.store.remotes.get(ieee, {}),
+    }
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "hue_remote_scenes/subscribe_activity", vol.Required("ieee"): str}
+)
+@callback
+def ws_subscribe_activity(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Live: zha_events and what we did about them (from the manager), plus every raw ZCL
+    frame from the device while this subscription is open (only to this connection)."""
+    ieee = msg["ieee"]
+
+    @callback
+    def _send(entry: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], {"entry": entry}))
+
+    @callback
+    def _from_manager(source_ieee: str, entry: dict[str, Any]) -> None:
+        if source_ieee == ieee:
+            _send(entry)
+
+    def _raw(**entry: Any) -> None:
+        # zigpy calls listeners in the event loop.
+        _send({"time": dt_util.utcnow().timestamp(), "source": "zigbee", **entry})
+
+    try:
+        stop_raw = zigbee.listen_remote(hass, ieee, _raw)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
+    stop_signal = async_dispatcher_connect(hass, SIGNAL_ACTIVITY, _from_manager)
+
+    @callback
+    def _unsubscribe() -> None:
+        stop_raw()
+        stop_signal()
+
+    connection.subscriptions[msg["id"]] = _unsubscribe
+    connection.send_result(msg["id"])

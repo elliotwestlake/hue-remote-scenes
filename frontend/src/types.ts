@@ -123,3 +123,62 @@ export const hex = (id: number) => `0x${id.toString(16).padStart(4, "0").toUpper
 export const dots = (label: string) => (/^\d/.test(label) ? "●".repeat(parseInt(label, 10)) : label.split(" ").pop()!);
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Diagnostics for one remote (hue_remote_scenes/diagnostics). */
+export interface ClusterInfo {
+  id: number;
+  name: string | null;
+}
+
+export interface DeviceInfo {
+  ieee: string;
+  name: string;
+  model: string | null;
+  manufacturer: string | null;
+  nwk: string | null;
+  quirk: string | null;
+  quirk_applied: boolean | null;
+  firmware: string | null;
+  power_source: string | null;
+  available: boolean | null;
+  lqi: number | null;
+  rssi: number | null;
+  last_seen: number | null;
+  endpoints: { id: number; profile: string | null; device_type: string | null; in: ClusterInfo[]; out: ClusterInfo[] }[];
+}
+
+export interface Check {
+  level: "ok" | "warn" | "info";
+  text: string;
+}
+
+/** Something a remote sent, or what Home Assistant did about it. */
+export interface ActivityEntry {
+  time: number; // unix seconds
+  source: "zha_event" | "zigbee" | "ha";
+  endpoint?: number | null;
+  cluster?: number | null;
+  command?: string | null;
+  args?: unknown;
+  params?: unknown;
+  note?: string | null;
+}
+
+/** A whole binding table entry: addrmode 1 is a group, 3 a device (ieee, dst_endpoint). */
+export interface FullTableEntry {
+  endpoint: number;
+  cluster: number;
+  addrmode: number;
+  group_id: number | null;
+  ieee?: string;
+  dst_endpoint?: number;
+}
+
+export interface Diagnostics {
+  info: DeviceInfo;
+  coordinator: string;
+  checks: Check[];
+  activity: ActivityEntry[];
+  table: FullTableEntry[] | null;
+  store: Record<string, unknown>;
+}
